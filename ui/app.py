@@ -290,11 +290,24 @@ def launch():
 
     start_btn = None
 
-    def on_progress(percent, timestamp_str, objects):
-        """Колбэк прогресса из детектора (вызывается из рабочего потока)."""
+    # Переменные для повторного открытия галереи
+    last_video_path = {"value": None}
+    last_moments = {"value": []}
+
+    def on_progress(percent, timestamp_str, objects, extra_log=None):
+        """Колбэк прогресса из детектора (вызывается из рабочего потока).
+
+        Аргументы:
+          percent       — процент выполнения (0..100);
+          timestamp_str — таймкод текущего кадра;
+          objects       — список найденных объектов;
+          extra_log     — опциональное сообщение для лога (напр. о стоп-кадрах).
+        """
         def _update():
             progress.set(min(percent / 100.0, 1.0))
-            if objects:
+            if extra_log:
+                log_msg(extra_log)
+            elif objects:
                 classes = [o["class"] for o in objects]
                 log_msg(f"⏱️ {timestamp_str} | {len(objects)} объектов: {', '.join(classes[:5])}")
         app.after(0, _update)
@@ -367,12 +380,16 @@ def launch():
             if detector.last_report_path:
                 app.after(0, lambda: log_msg(f"💾 Отчёт сохранён: {detector.last_report_path}"))
 
+            # Сохраняем результаты для повторного открытия галереи
+            last_video_path["value"] = path
+            last_moments["value"] = results
+
             # Облачная проверка (слой 4), если включена
             cloud_annotations = {}
             if cloud_var.get() and results:
                 cloud_annotations = _run_cloud_analysis(path, results)
 
-            # Галерея
+            # Галерея (автооткрытие после анализа — существующая логика)
             if results:
                 app.after(0, lambda: open_gallery(app, path, results, cloud_annotations))
             else:
