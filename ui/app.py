@@ -11,6 +11,18 @@ from PIL import Image
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+# ── AMOLED-палитра ──
+_C_BG = "#000000"        # окно и фреймы
+_C_CARD = "#0D0D0D"     # карточки
+_C_BORDER = "#1E1E1E"   # рамки
+_C_ACCENT = "#00E5FF"   # кнопки
+_C_ACCENT_HOVER = "#00B8D4"
+_C_TEXT = "#E0E0E0"     # основной текст
+_C_TEXT_SEC = "#8A8A8A" # вторичный
+_C_SUCCESS = "#00FF88"
+_C_ERROR = "#FF3B30"
+_C_FONT_MONO = ("Consolas", 12)
+
 # Цвета для bbox разных классов
 _COLORS = [
     "#ff4444", "#44ff44", "#4444ff", "#ffff44", "#ff44ff",
@@ -199,8 +211,9 @@ def launch():
     from core import nvidia_client
 
     app = ctk.CTk()
-    app.title("MuraveiVision — Military Object Detector")
+    app.title("🎯 MuraveiVision — Military Object Detector")
     app.geometry("1200x800")
+    app.configure(fg_color=_C_BG)
 
     detector = MilitaryDetector()
 
@@ -209,6 +222,7 @@ def launch():
         app,
         text="🎯 MuraveiVision",
         font=ctk.CTkFont(size=24, weight="bold"),
+        text_color=_C_ACCENT,
     ).pack(pady=15)
 
     # Информация о железе
@@ -217,16 +231,16 @@ def launch():
     ctk.CTkLabel(
         app,
         text=f"⚙️ Backend: {backend_str}",
-        font=ctk.CTkFont(size=14),
-        text_color="#88ccff",
+        font=ctk.CTkFont(size=14, weight="bold"),
+        text_color=_C_TEXT_SEC,
     ).pack(pady=5)
 
     # Фрейм управления
-    ctrl = ctk.CTkFrame(app)
+    ctrl = ctk.CTkFrame(app, fg_color=_C_BG, border_color=_C_BORDER, border_width=1)
     ctrl.pack(padx=20, pady=10, fill="x")
 
     video_path_var = ctk.StringVar(value="")
-    video_label = ctk.CTkLabel(ctrl, text="Видео не выбрано", text_color="gray")
+    video_label = ctk.CTkLabel(ctrl, text="📁 Видео не выбрано", text_color=_C_TEXT_SEC)
     video_label.grid(row=0, column=1, padx=10, sticky="w")
 
     def choose_video():
@@ -236,22 +250,88 @@ def launch():
         )
         if p:
             video_path_var.set(p)
-            video_label.configure(text=os.path.basename(p), text_color="white")
+            video_label.configure(text=os.path.basename(p), text_color=_C_TEXT)
 
-    ctk.CTkButton(ctrl, text="📹 Выбрать видео", command=choose_video, width=180).grid(
-        row=0, column=0, padx=10, pady=10
-    )
+    ctk.CTkButton(
+        ctrl, text="📹 Выбрать видео", command=choose_video, width=180,
+        fg_color=_C_ACCENT, hover_color=_C_ACCENT_HOVER, text_color="#000000",
+    ).grid(row=0, column=0, padx=10, pady=10)
 
     drone_var = ctk.BooleanVar(value=False)
     ctk.CTkCheckBox(ctrl, text="🚁 Режим дрона", variable=drone_var).grid(
         row=1, column=0, padx=10, pady=5, sticky="w"
     )
 
-    # Чекбокс слоя 4 (облачная проверка)
+    # Чекбокс слоя 4 (облачная обработка данных)
     cloud_var = ctk.BooleanVar(value=False)
-    ctk.CTkCheckBox(
-        ctrl, text="☁️ Облачная проверка подозрительных (слой 4)", variable=cloud_var
-    ).grid(row=2, column=0, padx=10, pady=5, sticky="w")
+    cloud_cb = ctk.CTkCheckBox(
+        ctrl, text="☁️ Облачная обработка данных", variable=cloud_var
+    )
+    cloud_cb.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+
+    # Контейнер для поля ключа и предупреждения (показывается при галке)
+    cloud_frame = ctk.CTkFrame(ctrl, fg_color="#0D0D0D", border_color="#1E1E1E", border_width=1)
+    # Изначально скрыт
+    cloud_frame.grid_forget()
+
+    # Поле API-ключа NVIDIA
+    ctk.CTkLabel(
+        cloud_frame, text="🔑 API-ключ NVIDIA:",
+        font=ctk.CTkFont(size=12, weight="bold"), text_color="#E0E0E0",
+    ).pack(padx=10, pady=(10, 2), anchor="w")
+
+    api_key_var = ctk.StringVar(value=os.getenv("NVIDIA_API_KEY", ""))
+    api_key_entry = ctk.CTkEntry(
+        cloud_frame, textvariable=api_key_var, width=400,
+        placeholder_text="nvapi-...", fg_color="#000000", border_color="#1E1E1E",
+        text_color="#E0E0E0",
+    )
+    api_key_entry.pack(padx=10, pady=2, fill="x")
+
+    def save_api_key():
+        """Сохраняет/обновляет NVIDIA_API_KEY в .env, не трогая остальные строки."""
+        key = api_key_var.get().strip()
+        env_path = ".env"
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        for i, line in enumerate(lines):
+            if line.startswith("NVIDIA_API_KEY="):
+                lines[i] = f"NVIDIA_API_KEY={key}\n"
+                found = True
+                break
+        if not found:
+            lines.append(f"NVIDIA_API_KEY={key}\n")
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        # Обновляем окружение текущего процесса
+        os.environ["NVIDIA_API_KEY"] = key
+        log_msg("🔑 Ключ сохранён")
+
+    ctk.CTkButton(
+        cloud_frame, text="🔑 Сохранить", command=save_api_key,
+        fg_color="#00E5FF", hover_color="#00B8D4", text_color="#000000",
+        width=160, height=32,
+    ).pack(padx=10, pady=5, anchor="w")
+
+    # Красное жирное предупреждение
+    ctk.CTkLabel(
+        cloud_frame,
+        text="⚠️ НЕОБХОДИМО ОТКЛЮЧИТЬ ГЕОЛОКАЦИЮ И ВКЛЮЧИТЬ ВНЕШНИЙ ПРОКСИ",
+        font=ctk.CTkFont(size=12, weight="bold"), text_color="red",
+        wraplength=500, justify="left",
+    ).pack(padx=10, pady=(5, 10), anchor="w")
+
+    def toggle_cloud_frame():
+        """Показывает/скрывает блок поля ключа при установке галки."""
+        if cloud_var.get():
+            cloud_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+        else:
+            cloud_frame.grid_forget()
+
+    cloud_cb.configure(command=toggle_cloud_frame)
 
     conf_label = ctk.CTkLabel(ctrl, text="Чувствительность: 0.35")
     conf_label.grid(row=1, column=1, sticky="w")
@@ -266,11 +346,13 @@ def launch():
     conf_slider.grid(row=1, column=2, padx=10, sticky="ew")
 
     # Прогресс и лог
-    progress = ctk.CTkProgressBar(app)
+    progress = ctk.CTkProgressBar(app, progress_color=_C_ACCENT, fg_color=_C_BORDER)
     progress.pack(padx=20, fill="x")
     progress.set(0)
 
-    log = ctk.CTkTextbox(app, height=400)
+    log = ctk.CTkTextbox(app, height=400, fg_color=_C_CARD, border_color=_C_BORDER,
+                         border_width=1, text_color=_C_TEXT,
+                         font=ctk.CTkFont(_C_FONT_MONO[0], _C_FONT_MONO[1]))
     log.pack(padx=20, pady=10, fill="both", expand=True)
 
     def log_msg(msg):
