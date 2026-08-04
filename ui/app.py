@@ -150,7 +150,9 @@ def open_gallery(parent, video_path, moments, cloud_annotations=None):
                 thumb.image = img
                 thumb.pack(side="left", padx=10, pady=10)
 
-                info = ctk.CTkLabel(card, text=cap, font=ctk.CTkFont(size=13), wraplength=400)
+                info = ctk.CTkLabel(card, text=cap,
+                                    font=ctk.CTkFont(_C_FONT_MONO[0], 13),
+                                    wraplength=400, text_color=_C_TEXT)
                 info.pack(side="left", padx=10, pady=5, anchor="n")
 
                 if cloud:
@@ -200,7 +202,8 @@ def _show_full_frame(parent, frame, moment):
         f"{o['class']} {o['confidence']:.2f}" for o in moment["objects"]
     )
     ctk.CTkLabel(win, text=f"{moment['timestamp']} — {obj_summary}",
-                 font=ctk.CTkFont(size=13)).pack(pady=5)
+                 font=ctk.CTkFont(_C_FONT_MONO[0], 13),
+                 text_color=_C_TEXT).pack(pady=5)
 
 
 def launch():
@@ -258,14 +261,16 @@ def launch():
     ).grid(row=0, column=0, padx=10, pady=10)
 
     drone_var = ctk.BooleanVar(value=False)
-    ctk.CTkCheckBox(ctrl, text="🚁 Режим дрона", variable=drone_var).grid(
+    ctk.CTkCheckBox(ctrl, text="🎯 🚁 Режим дрона", variable=drone_var,
+                    text_color=_C_TEXT).grid(
         row=1, column=0, padx=10, pady=5, sticky="w"
     )
 
     # Чекбокс слоя 4 (облачная обработка данных)
     cloud_var = ctk.BooleanVar(value=False)
     cloud_cb = ctk.CTkCheckBox(
-        ctrl, text="☁️ Облачная обработка данных", variable=cloud_var
+        ctrl, text="☁️ Облачная обработка данных", variable=cloud_var,
+        text_color=_C_TEXT,
     )
     cloud_cb.grid(row=2, column=0, padx=10, pady=5, sticky="w")
 
@@ -333,7 +338,8 @@ def launch():
 
     cloud_cb.configure(command=toggle_cloud_frame)
 
-    conf_label = ctk.CTkLabel(ctrl, text="Чувствительность: 0.35")
+    conf_label = ctk.CTkLabel(ctrl, text="🎯 Чувствительность: 0.35",
+                              text_color=_C_TEXT)
     conf_label.grid(row=1, column=1, sticky="w")
 
     def update_conf(v):
@@ -494,15 +500,16 @@ def launch():
         threading.Thread(target=run_analysis, daemon=True).start()
 
     # Фрейм с кнопками "Начать анализ" и "Галерея"
-    btn_frame = ctk.CTkFrame(app, fg_color="transparent")
+    btn_frame = ctk.CTkFrame(app, fg_color=_C_BG)
     btn_frame.pack(pady=10)
 
     start_btn = ctk.CTkButton(
         btn_frame,
-        text="🚀 Начать анализ",
+        text="▶️ Начать анализ",
         command=start_analysis,
-        fg_color="#2ecc71",
-        hover_color="#27ae60",
+        fg_color=_C_SUCCESS,
+        hover_color="#00CC6E",
+        text_color="#000000",
         height=45,
         width=220,
     )
@@ -519,8 +526,9 @@ def launch():
         btn_frame,
         text="🎞 Галерея",
         command=open_gallery_click,
-        fg_color="#3498db",
-        hover_color="#2980b9",
+        fg_color=_C_ACCENT,
+        hover_color=_C_ACCENT_HOVER,
+        text_color="#000000",
         height=45,
         width=180,
     )
