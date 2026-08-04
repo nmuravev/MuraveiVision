@@ -61,7 +61,8 @@ class MilitaryDetector:
         # Загружаем модель (ultralytics сам подхватит ONNX Runtime)
         # Импорт внутри метода, чтобы не тянуть тяжёлый ultralytics при импорте модуля
         from ultralytics import YOLO
-        self.model = YOLO(self.model_path)
+        # task="detect" убирает warning "Unable to automatically guess model task"
+        self.model = YOLO(self.model_path, task="detect")
 
         # Шаги кадров из .env (с дефолтами)
         self.frame_step = int(os.getenv("FRAME_STEP", "30"))

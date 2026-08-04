@@ -1,7 +1,10 @@
 """GUI приложения MuraveiVision (CustomTkinter)."""
 import os
+import json
+import glob
 import threading
 import datetime
+import webbrowser
 
 import cv2
 import customtkinter as ctk
@@ -381,6 +384,9 @@ def launch():
     # Переменные для повторного открытия галереи
     last_video_path = {"value": None}
     last_moments = {"value": []}
+    # Переменные для путей отчётов (HTML/JSON) — для кнопки "📄 Открыть HTML"
+    last_html_path = {"value": None}
+    last_report_path = {"value": None}
 
     def on_progress(percent, timestamp_str, objects, extra_log=None):
         """Колбэк прогресса из детектора (вызывается из рабочего потока).
@@ -471,11 +477,40 @@ def launch():
             # Сохраняем результаты для повторного открытия галереи
             last_video_path["value"] = path
             last_moments["value"] = results
+            # Сохраняем путь JSON-отчёта
+            if detector.last_report_path:
+                last_report_path["value"] = detector.last_report_path
 
             # Облачная проверка (слой 4), если включена
             cloud_annotations = {}
             if cloud_var.get() and results:
                 cloud_annotations = _run_cloud_analysis(path, results)
+
+            # Генерация HTML-отчёта (п.3) — самодостаточный файл с base64-миниатюрами
+            try:
+                from core.report_html import generate_html
+                settings = {
+                    "drone_mode": drone_var.get(),
+                    "confidence": round(conf_slider.get(), 2),
+                    "frame_step": detector.frame_step,
+                    "drone_frame_step": detector.drone_frame_step,
+                }
+                report_data = {
+                    "model": detector.model_name,
+                    "hardware": detector.hw,
+                    "created_at": datetime.datetime.now().isoformat(),
+                    "moments_count": len(results),
+                }
+                html_path = generate_html(
+                    path, results,
+                    report_data=report_data,
+                    settings=settings,
+                    cloud_annotations=cloud_annotations,
+                )
+                last_html_path["value"] = html_path
+                app.after(0, lambda p=html_path: log_msg(f"📄 HTML-отчёт: {p}"))
+            except Exception as e:
+                app.after(0, lambda err=e: log_msg(f"⚠️ HTML-отчёт не создан: {err}"))
 
             # Галерея (автооткрытие после анализа — существующая логика)
             if results:
@@ -498,6 +533,406 @@ def launch():
     def start_analysis():
         start_btn.configure(state="disabled", text="⏳ Анализ...")
         threading.Thread(target=run_analysis, daemon=True).start()
+
+    # ── Пакетная обработка папки (п.1) ──
+    def run_batch_analysis(folder):
+        """Анализирует все видео в папке одним экземпляром MilitaryDetector.
+
+        Для каждого видео:
+          - отчёт сохраняется как обычно (detector.analyze_video);
+          - в output/ пишется batch_summary_<ts>.json;
+          - в конце — общий HTML-отчёт по всей папке.
+        Общий прогресс = (индекс видео + процент внутри видео) / N.
+        """
+        # Расширения видео
+        exts = (".mp4", ".avi", ".mov", ".mkv")
+        try:
+            videos = sorted([
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if f.lower().endswith(exts)
+            ])
+        except Exception as e:
+            app.after(0, lambda err=e: log_msg(f"❌ Ошибка чтения папки: {err}"))
+            return
+
+        if not videos:
+            app.after(0, lambda: log_msg("⚠️ В папке нет видеофайлов"))
+            return
+
+        n = len(videos)
+        app.after(0, lambda: log_msg(f"📁 Пакет: найдено {n} видео в {folder}"))
+
+        # Сводка по пакету
+        batch_summary = []
+        total_moments = 0
+        all_batch_moments = []  # для общего HTML: [{video, moments, report_path}]
+
+        try:
+            for vi, vpath in enumerate(videos):
+                vname = os.path.basename(vpath)
+                app.after(0, lambda i=vi, nm=vname: log_msg(
+                    f"▶️ Видео {i + 1}/{n}: {nm}"))
+
+                # Колбэк прогресса с учётом позиции в пакете
+                def batch_progress(percent, timestamp_str, objects, extra_log=None,
+                                   _vi=vi, _n=n):
+                    """Колбэк прогресса для пакетного режима.
+
+                    Общий прогресс = (индекс видео + процент внутри видео) / N.
+                    """
+                    overall = (_vi + min(percent, 100.0) / 100.0) / _n * 100.0
+
+                    def _update():
+                        progress.set(min(overall / 100.0, 1.0))
+                        if extra_log:
+                            log_msg(extra_log)
+                        elif objects:
+                            classes = [o["class"] for o in objects]
+                            log_msg(
+                                f"  ⏱️ {timestamp_str} | {len(objects)} объектов: "
+                                f"{', '.join(classes[:5])}"
+                            )
+                    app.after(0, _update)
+
+                # Анализ одного видео (модель НЕ пересоздаём — используем тот же detector)
+                try:
+                    results = detector.analyze_video(
+                        vpath,
+                        drone_mode=drone_var.get(),
+                        confidence=conf_slider.get(),
+                        progress_callback=batch_progress,
+                    )
+                except Exception as e:
+                    app.after(0, lambda err=e, nm=vname: log_msg(
+                        f"❌ Ошибка в {nm}: {err}"))
+                    results = []
+
+                app.after(0, lambda r=results, nm=vname: log_msg(
+                    f"  ✅ {nm}: {len(r)} моментов"))
+                total_moments += len(results)
+
+                # Сводка классов для этого видео
+                classes_summary = {}
+                for m in results:
+                    for o in m.get("objects", []):
+                        cn = o.get("class", "?")
+                        classes_summary[cn] = classes_summary.get(cn, 0) + 1
+
+                report_path = getattr(detector, "last_report_path", None)
+                entry = {
+                    "файл": vname,
+                    "моментов": len(results),
+                    "классов_сводка": classes_summary,
+                    "путь_отчёта": report_path,
+                }
+                batch_summary.append(entry)
+                all_batch_moments.append({
+                    "video": vpath,
+                    "video_name": vname,
+                    "moments": results,
+                    "report_path": report_path,
+                })
+
+                # HTML-отчёт для каждого видео пакета
+                try:
+                    from core.report_html import generate_html
+                    settings = {
+                        "drone_mode": drone_var.get(),
+                        "confidence": round(conf_slider.get(), 2),
+                        "frame_step": detector.frame_step,
+                        "drone_frame_step": detector.drone_frame_step,
+                        "batch": f"{vi + 1}/{n}",
+                    }
+                    report_data = {
+                        "model": detector.model_name,
+                        "hardware": detector.hw,
+                        "created_at": datetime.datetime.now().isoformat(),
+                        "moments_count": len(results),
+                    }
+                    html_path = generate_html(
+                        vpath, results,
+                        report_data=report_data,
+                        settings=settings,
+                    )
+                    app.after(0, lambda p=html_path, nm=vname: log_msg(
+                        f"  📄 HTML-отчёт ({nm}): {p}"))
+                except Exception as e:
+                    app.after(0, lambda err=e, nm=vname: log_msg(
+                        f"  ⚠️ HTML для {nm} не создан: {err}"))
+
+            # Сохраняем batch_summary_<ts>.json
+            try:
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                summary_path = os.path.join("output", f"batch_summary_{ts}.json")
+                os.makedirs("output", exist_ok=True)
+                with open(summary_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "folder": folder,
+                        "videos_count": n,
+                        "total_moments": total_moments,
+                        "items": batch_summary,
+                    }, f, ensure_ascii=False, indent=2)
+                app.after(0, lambda p=summary_path: log_msg(
+                    f"📋 Сводка пакета: {p}"))
+            except Exception as e:
+                app.after(0, lambda err=e: log_msg(f"⚠️ Сводка не сохранена: {err}"))
+
+            # Общий HTML-отчёт по всей папке
+            try:
+                from core.report_html import generate_html
+                # Используем первое видео как "основное" для шапки,
+                # но в карточки включаем моменты всех видео с пометкой источника.
+                # Простейший подход: генерируем HTML для каждого видео уже сделан выше,
+                # а здесь создаём индексный HTML-отчёт со ссылками на все видео.
+                # Однако ТЗ требует "общий HTML-отчёт по всей папке".
+                # Создаём объединённый отчёт: шапка пакета + карточки всех моментов.
+                _generate_batch_html(folder, all_batch_moments, detector, n,
+                                     total_moments)
+            except Exception as e:
+                app.after(0, lambda err=e: log_msg(
+                    f"⚠️ Общий HTML-отчёт не создан: {err}"))
+
+            app.after(0, lambda: log_msg(
+                f"✅ Пакет завершён: {n} видео, {total_moments} моментов"))
+            app.after(0, lambda: progress.set(1.0))
+            app.after(0, lambda: messagebox.showinfo(
+                "Пакет завершён",
+                f"Обработано видео: {n}\nВсего моментов: {total_moments}",
+            ))
+        finally:
+            app.after(
+                0,
+                lambda: start_btn.configure(state="normal", text="🚀 Начать анализ"),
+            )
+
+    def _generate_batch_html(folder, all_batch_moments, det, n, total_moments):
+        """Создаёт общий HTML-отчёт по всей папке (п.1 + п.3).
+
+        Шапка: папка, дата, железо, модель, кол-во видео/моментов.
+        Карточки: все моменты всех видео (с пометкой источника), макс. 200 миниатюр.
+        """
+        from core.report_html import generate_html, _draw_boxes, _frame_to_base64
+        import cv2 as _cv2
+
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_file = os.path.join("output", f"batch_report_{ts}.html")
+
+        # Собираем все моменты с пометкой источника
+        all_moments = []
+        for item in all_batch_moments:
+            for m in item["moments"]:
+                # Копируем момент и добавляем имя видео
+                mm = dict(m)
+                mm["_video_name"] = item["video_name"]
+                mm["_video_path"] = item["video"]
+                all_moments.append(mm)
+
+        # Ограничиваем 200 миниатюр
+        display = all_moments[:200]
+
+        # Шапка
+        hw = det.hw
+        if isinstance(hw, dict):
+            gpu = hw.get("gpu")
+            cpu = hw.get("cpu", {})
+            if gpu:
+                hw_str = f"GPU: {gpu.get('name', '')} ({gpu.get('vram_mb', 0) // 1024} GB)"
+            else:
+                hw_str = f"CPU: {cpu.get('brand', '')}"
+        else:
+            hw_str = str(hw)
+
+        # Карточки с пометкой источника
+        cards_html = ""
+        for i, moment in enumerate(display):
+            ts_m = moment.get("timestamp", "")
+            vname = moment.get("_video_name", "")
+            objects = moment.get("objects", [])
+            obj_lines = ""
+            for o in objects:
+                obj_lines += (
+                    f"<div class='obj-row'>"
+                    f"<span class='obj-class'>{o.get('class', '')}</span>"
+                    f"<span class='obj-conf'>{o.get('confidence', 0):.2f}</span></div>"
+                )
+            cards_html += f"""
+            <div class='card' data-img-id='{i}'>
+                <div class='card-thumb'><img class='thumb' alt='moment {i}' /></div>
+                <div class='card-info'>
+                    <div class='card-ts mono'>⏱️ {ts_m}</div>
+                    <div class='card-src mono'>📁 {vname}</div>
+                    <div class='card-objs'>{obj_lines}</div>
+                </div>
+            </div>
+            """
+
+        css = f"""
+        <style>
+        * {{ box-sizing: border-box; }}
+        body {{ margin:0; padding:20px; background:#000000; color:#E0E0E0;
+               font-family:'Segoe UI','Roboto',sans-serif; }}
+        .mono {{ font-family:'Consolas','Courier New',monospace; }}
+        .header {{ background:#0D0D0D; border:1px solid #1E1E1E; border-radius:12px;
+                   padding:20px; margin-bottom:20px; }}
+        .header h1 {{ color:#00E5FF; margin:0 0 15px 0; font-size:24px; }}
+        .meta {{ display:flex; flex-direction:column; gap:6px; }}
+        .kv-row {{ display:flex; gap:12px; font-size:14px; }}
+        .kv-key {{ color:#8A8A8A; min-width:120px; }}
+        .kv-val {{ color:#E0E0E0; }}
+        .card {{ display:flex; gap:16px; background:#0D0D0D; border:1px solid #1E1E1E;
+                 border-radius:10px; padding:12px; margin-bottom:14px; }}
+        .card-thumb img {{ width:480px; border-radius:6px; display:block; }}
+        .card-info {{ flex:1; }}
+        .card-ts {{ color:#00E5FF; font-size:16px; font-weight:bold; margin-bottom:4px; }}
+        .card-src {{ color:#8A8A8A; font-size:12px; margin-bottom:8px; }}
+        .card-objs {{ display:flex; flex-direction:column; gap:4px; }}
+        .obj-row {{ display:flex; justify-content:space-between; max-width:300px; }}
+        .obj-class {{ color:#E0E0E0; }}
+        .obj-conf {{ color:#00FF88; font-family:'Consolas',monospace; }}
+        .footer {{ text-align:center; color:#8A8A8A; margin-top:30px; font-size:12px; }}
+        </style>
+        """
+
+        html = f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MuraveiVision — Пакетный отчёт — {ts}</title>
+{css}</head><body>
+<header class="header">
+    <h1>🎯 MuraveiVision — Пакетный отчёт</h1>
+    <div class="meta">
+        <div class="kv-row"><span class="kv-key">Папка</span>
+            <span class="kv-val mono">{folder}</span></div>
+        <div class="kv-row"><span class="kv-key">Дата</span>
+            <span class="kv-val">{datetime.datetime.now().isoformat()}</span></div>
+        <div class="kv-row"><span class="kv-key">Железо</span>
+            <span class="kv-val">{hw_str}</span></div>
+        <div class="kv-row"><span class="kv-key">Модель</span>
+            <span class="kv-val mono">{det.model_name}</span></div>
+        <div class="kv-row"><span class="kv-key">Видео</span>
+            <span class="kv-val" style="color:#00FF88">{n}</span></div>
+        <div class="kv-row"><span class="kv-key">Всего моментов</span>
+            <span class="kv-val" style="color:#00FF88">{total_moments}</span></div>
+    </div>
+</header>
+<main>
+{cards_html}
+</main>
+<div class="footer">Сгенерировано MuraveiVision · {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+</body></html>
+"""
+
+        # Встраиваем миниатюры (по источнику видео)
+        # Группируем по видео, чтобы открывать каждый cap один раз
+        by_video = {}
+        for i, moment in enumerate(display):
+            vp = moment.get("_video_path", "")
+            by_video.setdefault(vp, []).append((i, moment))
+
+        for vp, items in by_video.items():
+            if not vp or not os.path.exists(vp):
+                continue
+            cap = _cv2.VideoCapture(vp)
+            for i, moment in items:
+                frame_idx = moment.get("frame", 0)
+                cap.set(_cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    continue
+                annotated = _draw_boxes(frame, moment.get("objects", []))
+                data_url = _frame_to_base64(annotated, max_width=480, quality=70)
+                if data_url:
+                    placeholder = f"<img class='thumb' alt='moment {i}' />"
+                    real = f"<img class='thumb' src='{data_url}' alt='moment {i}' />"
+                    html = html.replace(placeholder, real, 1)
+            cap.release()
+
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        last_html_path["value"] = out_file
+        app.after(0, lambda p=out_file: log_msg(f"📄 HTML-отчёт (пакет): {p}"))
+
+    def start_batch():
+        """Обработчик кнопки '📁 Папка (пакетно)'."""
+        folder = filedialog.askdirectory(title="Выберите папку с видео")
+        if not folder:
+            return
+        start_btn.configure(state="disabled", text="⏳ Пакет...")
+        threading.Thread(target=run_batch_analysis, args=(folder,), daemon=True).start()
+
+    # ── Кнопка "📂 Открыть отчёт" (п.2) ──
+    def open_report_click():
+        """Открывает JSON-отчёт из output/ и загружает видео + моменты в галерею."""
+        # Диалог выбора JSON из output/
+        initial = os.path.abspath("output") if os.path.isdir("output") else os.getcwd()
+        report_file = filedialog.askopenfilename(
+            title="Выберите JSON-отчёт",
+            initialdir=initial,
+            filetypes=[("JSON-отчёты", "*.json"), ("Все файлы", "*.*")],
+        )
+        if not report_file:
+            return
+
+        try:
+            with open(report_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось прочитать отчёт:\n{e}")
+            return
+
+        video_path = data.get("video", "")
+        moments = data.get("moments", [])
+
+        if not moments:
+            messagebox.showinfo("Отчёт", "В отчёте нет моментов")
+            return
+
+        # Проверяем существование видеофайла
+        if not video_path or not os.path.exists(video_path):
+            log_msg(f"⚠️ Видеофайл не найден: {video_path}")
+            log_msg(f"   Отчёт: {report_file}")
+            messagebox.showwarning(
+                "Видео не найдено",
+                f"Видеофайл не найден:\n{video_path}\n\n"
+                f"Отчёт: {report_file}\n\n"
+                f"Галерея недоступна без видео.",
+            )
+            return
+
+        # Заполняем last_video_path/last_moments, чтобы кнопка "🎞 Галерея" тоже работала
+        last_video_path["value"] = video_path
+        last_moments["value"] = moments
+        last_report_path["value"] = report_file
+
+        log_msg(f"📂 Открыт отчёт: {report_file}")
+        log_msg(f"   Видео: {video_path}")
+        log_msg(f"   Моментов: {len(moments)}")
+
+        # Открываем галерею с загруженными данными
+        open_gallery(app, video_path, moments)
+
+    # ── Кнопка "📄 Открыть HTML" (п.3) ──
+    def open_html_click():
+        """Открывает последний HTML-отчёт в браузере."""
+        html_path = last_html_path["value"]
+        if not html_path or not os.path.exists(html_path):
+            # Предлагаем выбрать HTML из output/
+            initial = os.path.abspath("output") if os.path.isdir("output") else os.getcwd()
+            chosen = filedialog.askopenfilename(
+                title="Выберите HTML-отчёт",
+                initialdir=initial,
+                filetypes=[("HTML-отчёты", "*.html"), ("Все файлы", "*.*")],
+            )
+            if not chosen:
+                return
+            html_path = chosen
+        try:
+            webbrowser.open(html_path)
+            log_msg(f"📄 Открыт HTML: {html_path}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть HTML:\n{e}")
 
     # Фрейм с кнопками "Начать анализ" и "Галерея"
     btn_frame = ctk.CTkFrame(app, fg_color=_C_BG)
@@ -533,6 +968,46 @@ def launch():
         width=180,
     )
     gallery_btn.pack(side="left", padx=10)
+
+    # ── Новые кнопки (п.1, п.2, п.3) в AMOLED-стиле ──
+    # Кнопка "📁 Папка (пакетно)" — пакетная обработка папки
+    batch_btn = ctk.CTkButton(
+        btn_frame,
+        text="📁 Папка (пакетно)",
+        command=start_batch,
+        fg_color=_C_ACCENT,
+        hover_color=_C_ACCENT_HOVER,
+        text_color="#000000",
+        height=45,
+        width=200,
+    )
+    batch_btn.pack(side="left", padx=10)
+
+    # Кнопка "📂 Открыть отчёт" — загрузка JSON-отчёта
+    open_report_btn = ctk.CTkButton(
+        btn_frame,
+        text="📂 Открыть отчёт",
+        command=open_report_click,
+        fg_color=_C_ACCENT,
+        hover_color=_C_ACCENT_HOVER,
+        text_color="#000000",
+        height=45,
+        width=200,
+    )
+    open_report_btn.pack(side="left", padx=10)
+
+    # Кнопка "📄 Открыть HTML" — открыть HTML-отчёт в браузере
+    open_html_btn = ctk.CTkButton(
+        btn_frame,
+        text="📄 Открыть HTML",
+        command=open_html_click,
+        fg_color=_C_ACCENT,
+        hover_color=_C_ACCENT_HOVER,
+        text_color="#000000",
+        height=45,
+        width=200,
+    )
+    open_html_btn.pack(side="left", padx=10)
 
     app.mainloop()
 
