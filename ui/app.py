@@ -411,15 +411,38 @@ def launch():
         start_btn.configure(state="disabled", text="⏳ Анализ...")
         threading.Thread(target=run_analysis, daemon=True).start()
 
+    # Фрейм с кнопками "Начать анализ" и "Галерея"
+    btn_frame = ctk.CTkFrame(app, fg_color="transparent")
+    btn_frame.pack(pady=10)
+
     start_btn = ctk.CTkButton(
-        app,
+        btn_frame,
         text="🚀 Начать анализ",
         command=start_analysis,
         fg_color="#2ecc71",
         hover_color="#27ae60",
         height=45,
+        width=220,
     )
-    start_btn.pack(pady=10)
+    start_btn.pack(side="left", padx=10)
+
+    def open_gallery_click():
+        """Обработчик кнопки '🎞 Галерея'."""
+        if not last_moments["value"]:
+            messagebox.showinfo("Галерея", "Анализ ещё не выполнялся")
+            return
+        open_gallery(app, last_video_path["value"], last_moments["value"])
+
+    gallery_btn = ctk.CTkButton(
+        btn_frame,
+        text="🎞 Галерея",
+        command=open_gallery_click,
+        fg_color="#3498db",
+        hover_color="#2980b9",
+        height=45,
+        width=180,
+    )
+    gallery_btn.pack(side="left", padx=10)
 
     app.mainloop()
 
