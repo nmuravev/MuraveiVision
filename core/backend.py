@@ -11,14 +11,18 @@ def choose_providers(gpu: dict | None) -> list:
 
 
 def choose_model(gpu: dict | None) -> str:
-    """Подбираем размер модели под объем VRAM (или CPU)."""
+    """Подбираем размер модели под объем VRAM (или CPU).
+
+    Возвращает имя ONNX-файла, который реально лежит в models/.
+    Доступные размеры: s, m, l (nano нет — понижаем до small).
+    """
     if gpu is None:
-        return "yolov8n-world.onnx"          # только CPU
+        return "yolov8s-worldv2.onnx"          # CPU — лёгкая small
     if gpu["vram_mb"] >= 8000:
-        return "yolov8m-world.onnx"          # мощная NVIDIA
+        return "yolov8l-worldv2.onnx"          # мощная NVIDIA — large
     if gpu["vram_mb"] >= 4000:
-        return "yolov8s-world.onnx"          # средняя NVIDIA
-    return "yolov8n-world.onnx"              # слабая NVIDIA
+        return "yolov8m-worldv2.onnx"          # средняя NVIDIA — medium
+    return "yolov8s-worldv2.onnx"              # слабая NVIDIA — small
 
 
 def describe_backend(gpu: dict | None, cpu: dict) -> str:
