@@ -1,0 +1,26 @@
+# Секреты
+.env
+*.key
+*.pem
+
+# Папки с результатами
+output/
+clips/
+reports/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+build_venv/
+weights/
+
+# Модели и веса (тяжелые, не нужны в репозитории)
+models/
+source_weights/
+*.onnx
+*.pt
+
+# Сборки
+dist/
+build/

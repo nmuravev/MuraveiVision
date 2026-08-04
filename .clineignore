@@ -1,0 +1,7 @@
+.env
+weights/
+source_weights/
+models/
+output/
+*.onnx
+*.pt
