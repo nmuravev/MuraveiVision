@@ -86,10 +86,22 @@ def launch():
         log.insert("end", msg + "\n")
         log.see("end")
 
+    from core.classes import MILITARY_CLASSES
     log_msg("✅ Приложение готово к работе")
-    log_msg(f"📋 Классов в словаре: {len(detector.classes)}")
+    log_msg(f"📋 Классов в словаре: {len(MILITARY_CLASSES)}")
+    log_msg(f"🤖 Модель: {detector.model_name}")
+    log_msg(f"🖥️ Провайдеры: {', '.join(detector.providers)}")
 
     start_btn = None
+
+    def on_progress(percent, timestamp_str, objects):
+        """Колбэк прогресса из детектора (вызывается из рабочего потока)."""
+        def _update():
+            progress.set(min(percent / 100.0, 1.0))
+            if objects:
+                classes = [o["class"] for o in objects]
+                log_msg(f"⏱️ {timestamp_str} | {len(objects)} объектов: {', '.join(classes[:5])}")
+        app.after(0, _update)
 
     def run_analysis():
         path = video_path_var.get()
@@ -98,13 +110,18 @@ def launch():
             start_btn.configure(state="normal", text="🚀 Начать анализ")
             return
         try:
+            progress.set(0)
+            log_msg(f"▶️ Запуск анализа: {os.path.basename(path)}")
             results = detector.analyze_video(
                 path,
                 drone_mode=drone_var.get(),
                 confidence=conf_slider.get(),
                 progress_callback=on_progress,
             )
+            app.after(0, lambda: progress.set(1.0))
             app.after(0, lambda: log_msg(f"✅ Найдено моментов: {len(results)}"))
+            if detector.last_report_path:
+                app.after(0, lambda: log_msg(f"💾 Отчёт сохранён: {detector.last_report_path}"))
             app.after(
                 0, lambda: messagebox.showinfo("Готово", f"Найдено моментов: {len(results)}")
             )
