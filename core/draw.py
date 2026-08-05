@@ -63,11 +63,15 @@ def draw_boxes_pil(frame, objects):
 
     Возвращает BGR-кадр (numpy array) с нарисованными рамками и подписями.
     Подпись: "танк 0.87" (класс на русском + confidence).
+
+    Блок Б (Задача 10): крупный читаемый шрифт, белая подпись на цветной
+    подложке alpha~200, рисуется ДО ужатия (чтобы читаться при 100% зуме).
     """
     global _font_cache
 
     h, w = frame.shape[:2]
-    thickness = max(1, int(min(h, w) / 300))
+    # Блок Б: толщина рамки max(2, h//360)
+    thickness = max(2, h // 360)
 
     # Цвета для разных классов (BGR → RGB для PIL)
     colors_bgr = [
@@ -77,11 +81,14 @@ def draw_boxes_pil(frame, objects):
 
     # BGR → RGB для PIL
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(rgb)
+    pil_img = Image.fromarray(rgb).convert("RGBA")
+    # Слой для полупрозрачной подложки
+    overlay = Image.new("RGBA", pil_img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(pil_img)
+    draw_overlay = ImageDraw.Draw(overlay)
 
-    # Размер шрифта зависит от размера кадра
-    font_size = max(12, int(min(h, w) / 50))
+    # Блок Б: размер шрифта max(24, h//32) — крупный, читается при 100% зуме
+    font_size = max(24, h // 32)
     if _font_cache is None or getattr(_font_cache, "size", 0) != font_size:
         _font_cache = _load_font(font_size)
 
@@ -97,7 +104,7 @@ def draw_boxes_pil(frame, objects):
         # Подпись: "танк 0.87"
         label = f"{obj['class']} {obj['confidence']:.2f}"
 
-        # Фон подписи
+        # Размер текста
         try:
             bbox = draw.textbbox((x1, y1), label, font=_font_cache)
             tw = bbox[2] - bbox[0]
@@ -105,14 +112,22 @@ def draw_boxes_pil(frame, objects):
         except Exception:
             tw, th = len(label) * font_size // 2, font_size
 
-        # Прямоугольник-фон над рамкой
-        bg_y1 = max(0, y1 - th - 4)
+        # Блок Б: подложка цвета рамки alpha~200, отступ 4-6 px
+        pad = 5
+        bg_y1 = max(0, y1 - th - pad * 2)
         bg_y2 = y1
-        draw.rectangle([x1, bg_y1, x1 + tw + 4, bg_y2], fill=rgb_color)
+        bg_x2 = x1 + tw + pad * 2
+        # Полупрозрачная подложка (alpha=200) на overlay
+        draw_overlay.rectangle([x1, bg_y1, bg_x2, bg_y2],
+                               fill=(r, g, b, 200))
 
-        # Текст (чёрный на цветном фоне)
-        text_color = (0, 0, 0)
-        draw.text((x1 + 2, bg_y1 + 1), label, fill=text_color, font=_font_cache)
+        # Блок Б: текст БЕЛЫЙ жирный
+        text_color = (255, 255, 255, 255)
+        draw_overlay.text((x1 + pad, bg_y1 + pad), label,
+                          fill=text_color, font=_font_cache)
+
+    # Накладываем overlay (с подложками и текстом) на основное изображение
+    pil_img = Image.alpha_composite(pil_img, overlay).convert("RGB")
 
     # RGB → BGR обратно
     result = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)

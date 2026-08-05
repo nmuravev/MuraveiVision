@@ -23,12 +23,12 @@ import cv2
 from PySide6.QtCore import (
     Qt, QThread, Signal, QTimer, QObject, Slot, QUrl, QSize,
 )
-from PySide6.QtGui import QImage, QPixmap, QAction, QIcon
+from PySide6.QtGui import QImage, QPixmap, QAction, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QSlider, QCheckBox, QLineEdit, QFileDialog,
     QTreeWidget, QTreeWidgetItem, QMessageBox, QProgressBar, QGroupBox,
-    QFrame,
+    QFrame, QStatusBar,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebChannel import QWebChannel
@@ -236,26 +236,77 @@ class ProMainWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         self.setCentralWidget(splitter)
 
-        # ── СЛЕВА: проводник с фильтром видео ──
+        # ── СЛЕВА: вертикальный QSplitter (проводник + очередь сегментов) ──
         left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_outer = QVBoxLayout(left)
+        left_outer.setContentsMargins(8, 8, 8, 8)
 
-        left_layout.addWidget(QLabel("📁 Проводник"))
+        # Вертикальный сплиттер: сверху проводник, снизу очередь (Блок В)
+        left_split = QSplitter(Qt.Vertical)
+
+        # ── Верх: проводник с фильтром видео ──
+        explorer_widget = QWidget()
+        explorer_layout = QVBoxLayout(explorer_widget)
+        explorer_layout.setContentsMargins(0, 0, 0, 0)
+
+        explorer_layout.addWidget(QLabel("📁 Проводник"))
         self.filter_edit = QLineEdit(placeholderText="🔍 Фильтр видео...")
         self.filter_edit.textChanged.connect(self._on_filter)
-        left_layout.addWidget(self.filter_edit)
+        explorer_layout.addWidget(self.filter_edit)
 
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.itemDoubleClicked.connect(self._on_tree_double_click)
-        left_layout.addWidget(self.tree, stretch=1)
+        explorer_layout.addWidget(self.tree, stretch=1)
 
         # Кнопка выбора папки
         browse_btn = QPushButton("📂 Выбрать папку")
         browse_btn.clicked.connect(self._on_browse_folder)
-        left_layout.addWidget(browse_btn)
+        explorer_layout.addWidget(browse_btn)
 
+        left_split.addWidget(explorer_widget)
+
+        # ── Низ: очередь сегментов (Блок В) ──
+        queue_widget = QWidget()
+        queue_layout = QVBoxLayout(queue_widget)
+        queue_layout.setContentsMargins(0, 0, 0, 0)
+
+        queue_layout.addWidget(QLabel("📋 Очередь анализа"))
+        self.queue_tree = QTreeWidget()
+        self.queue_tree.setHeaderLabels(["Сегмент", "Диапазон"])
+        self.queue_tree.setColumnWidth(0, 180)
+        self.queue_tree.setColumnWidth(1, 120)
+        self.queue_tree.itemDoubleClicked.connect(self._on_queue_double_click)
+        queue_layout.addWidget(self.queue_tree, stretch=1)
+
+        # Кнопки очереди (Блок В)
+        queue_btns = QHBoxLayout()
+        add_queue_btn = QPushButton("➕ В очередь")
+        add_queue_btn.clicked.connect(self._on_add_to_queue)
+        queue_btns.addWidget(add_queue_btn)
+
+        add_folder_queue_btn = QPushButton("📁 Папку в очередь")
+        add_folder_queue_btn.clicked.connect(self._on_add_folder_to_queue)
+        queue_btns.addWidget(add_folder_queue_btn)
+
+        clear_queue_btn = QPushButton("🗑 Очистить всё")
+        clear_queue_btn.setStyleSheet("background:#FF3B30; color:#FFFFFF;")
+        clear_queue_btn.clicked.connect(self._on_clear_queue)
+        queue_btns.addWidget(clear_queue_btn)
+        queue_layout.addLayout(queue_btns)
+
+        # Кнопка анализа очереди (Блок В)
+        self.analyze_queue_btn = QPushButton("▶ Анализ очереди")
+        self.analyze_queue_btn.setObjectName("success")
+        self.analyze_queue_btn.clicked.connect(self._on_analyze_queue)
+        queue_layout.addWidget(self.analyze_queue_btn)
+
+        left_split.addWidget(queue_widget)
+
+        # Размеры: проводник 60%, очередь 40%
+        left_split.setSizes([300, 200])
+
+        left_outer.addWidget(left_split)
         splitter.addWidget(left)
 
         # ── ЦЕНТР: плеер ──
@@ -295,6 +346,11 @@ class ProMainWindow(QMainWindow):
         out_btn = QPushButton("[O] Out")
         out_btn.clicked.connect(self._on_set_out)
         markers.addWidget(out_btn)
+        # Блок Д: кнопка "🚩 Пометить момент" (ручная метка)
+        manual_btn = QPushButton("🚩 Пометить момент")
+        manual_btn.setStyleSheet("background:#FF9500; color:#000000;")
+        manual_btn.clicked.connect(self._on_manual_mark)
+        markers.addWidget(manual_btn)
         self.markers_label = QLabel("In: 00:00:00 | Out: 00:00:00")
         self.markers_label.setStyleSheet("font-family: Consolas, monospace; color: #8A8A8A;")
         markers.addWidget(self.markers_label)
@@ -344,6 +400,15 @@ class ProMainWindow(QMainWindow):
         self.batch_btn = QPushButton("📁 Пакет")
         self.batch_btn.clicked.connect(self._on_batch)
         action_row.addWidget(self.batch_btn)
+
+        # Блок Е: кнопки сессий
+        save_session_btn = QPushButton("💾 Сессия")
+        save_session_btn.clicked.connect(self._on_save_session)
+        action_row.addWidget(save_session_btn)
+
+        load_session_btn = QPushButton("📂 Загрузить")
+        load_session_btn.clicked.connect(self._on_load_session)
+        action_row.addWidget(load_session_btn)
 
         center_layout.addLayout(action_row)
 
@@ -395,6 +460,20 @@ class ProMainWindow(QMainWindow):
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
+
+        # ── Статус-бар (Блок Г: подсказка по хоткеям; Блок Е: "Продолжить") ──
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Space I O Q — управление | 🚩 — ручная метка")
+
+        # Блок Е: проверяем сохранённую сессию при старте
+        self._check_saved_session()
+
+        # ── Блок Г: хоткеи Space/I/O/Q ──
+        QShortcut(QKeySequence(Qt.Key_Space), self, activated=self._on_play_pause)
+        QShortcut(QKeySequence(Qt.Key_I), self, activated=self._on_set_in)
+        QShortcut(QKeySequence(Qt.Key_O), self, activated=self._on_set_out)
+        QShortcut(QKeySequence(Qt.Key_Q), self, activated=self._on_add_to_queue)
 
     # ── Лог ──
     def _log(self, msg):
@@ -491,6 +570,370 @@ class ProMainWindow(QMainWindow):
         out_ts = str(datetime.timedelta(
             seconds=int(self.out_marker / self.player_thread.fps)))
         self.markers_label.setText(f"In: {in_ts} | Out: {out_ts}")
+
+    # ── Блок В: очередь сегментов ──
+    def _on_add_to_queue(self):
+        """Добавляет текущие in/out текущего файла в очередь (Блок В).
+
+        Если in/out не размечено (оба 0) — добавляет весь файл.
+        """
+        if not self.video_path:
+            QMessageBox.warning(self, "Ошибка", "Сначала выберите видео!")
+            return
+
+        fps = self.player_thread.fps or 25.0
+        in_sec = self.in_marker / fps if self.in_marker > 0 else 0
+        out_sec = self.out_marker / fps if self.out_marker > 0 else (
+            self.player_thread.total_frames / fps)
+
+        in_ts = str(datetime.timedelta(seconds=int(in_sec)))
+        out_ts = str(datetime.timedelta(seconds=int(out_sec)))
+        label = f"{os.path.basename(self.video_path)} [{in_ts}–{out_ts}]"
+
+        # Ищем существующий элемент файла или создаём новый
+        file_item = None
+        for i in range(self.queue_tree.topLevelItemCount()):
+            it = self.queue_tree.topLevelItem(i)
+            if it.data(0, Qt.UserRole) == self.video_path:
+                file_item = it
+                break
+        if not file_item:
+            file_item = QTreeWidgetItem([os.path.basename(self.video_path), ""])
+            file_item.setData(0, Qt.UserRole, self.video_path)
+            self.queue_tree.addTopLevelItem(file_item)
+
+        # Дочерний элемент-сегмент
+        seg_item = QTreeWidgetItem([f"{in_ts}–{out_ts}", label])
+        seg_item.setData(0, Qt.UserRole, {
+            "video": self.video_path,
+            "start_sec": in_sec,
+            "end_sec": out_sec,
+            "manual": False,
+        })
+        file_item.addChild(seg_item)
+        self.queue_tree.expandItem(file_item)
+        self._log(f"➕ В очередь: {label}")
+
+    def _on_add_folder_to_queue(self):
+        """Добавляет все видео папки целиком в очередь (Блок В)."""
+        folder = QFileDialog.getExistingDirectory(self, "Выберите папку с видео")
+        if not folder:
+            return
+        exts = (".mp4", ".avi", ".mov", ".mkv")
+        count = 0
+        for f in sorted(os.listdir(folder)):
+            if f.lower().endswith(exts):
+                vpath = os.path.join(folder, f)
+                file_item = QTreeWidgetItem([f, ""])
+                file_item.setData(0, Qt.UserRole, vpath)
+                seg_item = QTreeWidgetItem(["весь файл", f])
+                seg_item.setData(0, Qt.UserRole, {
+                    "video": vpath,
+                    "start_sec": 0,
+                    "end_sec": None,
+                    "manual": False,
+                })
+                file_item.addChild(seg_item)
+                self.queue_tree.addTopLevelItem(file_item)
+                count += 1
+        self._log(f"📁 В очередь добавлено {count} видео из {folder}")
+
+    def _on_clear_queue(self):
+        """Очищает очередь (Блок В)."""
+        self.queue_tree.clear()
+        self._log("🗑 Очередь очищена")
+
+    def _on_queue_double_click(self, item, column):
+        """Клик по сегменту — плеер открывает файл и прыгает на in (Блок В4)."""
+        data = item.data(0, Qt.UserRole)
+        if data and isinstance(data, dict):
+            vpath = data.get("video", "")
+            start_sec = data.get("start_sec", 0)
+            if vpath and os.path.exists(vpath):
+                self._load_video(vpath)
+                fps = self.player_thread.fps or 25.0
+                self.player_thread.seek(int(start_sec * fps))
+
+    def _on_analyze_queue(self):
+        """Анализ всех сегментов очереди одним экземпляром модели (Блок В3)."""
+        segments = []
+        for i in range(self.queue_tree.topLevelItemCount()):
+            file_item = self.queue_tree.topLevelItem(i)
+            for j in range(file_item.childCount()):
+                seg = file_item.child(j)
+                data = seg.data(0, Qt.UserRole)
+                if data and isinstance(data, dict):
+                    segments.append(data)
+
+        if not segments:
+            QMessageBox.warning(self, "Очередь пуста", "Добавьте сегменты в очередь")
+            return
+
+        self.analyze_btn.setEnabled(False)
+        self.batch_btn.setEnabled(False)
+        self.analyze_queue_btn.setEnabled(False)
+        self.cancel_event.clear()
+        threading.Thread(
+            target=self._run_queue_analysis,
+            args=(segments,),
+            daemon=True,
+        ).start()
+
+    def _run_queue_analysis(self, segments):
+        """Последовательно анализирует все сегменты очереди (Блок В3)."""
+        n = len(segments)
+        total_moments = 0
+        all_results = []
+        cancelled = False
+
+        try:
+            for si, seg in enumerate(segments):
+                if self.cancel_event.is_set():
+                    cancelled = True
+                    self._log("⏹ Очередь отменена")
+                    break
+
+                vpath = seg["video"]
+                start_sec = seg.get("start_sec")
+                end_sec = seg.get("end_sec")
+                is_manual = seg.get("manual", False)
+
+                self._log(f"▶️ Сегмент {si + 1}/{n}: {os.path.basename(vpath)}")
+
+                def queue_progress(percent, ts, objects, extra_log=None,
+                                   eta_sec=None, _si=si, _n=n):
+                    overall = (_si + min(percent, 100.0) / 100.0) / _n * 100.0
+
+                    def _update():
+                        self.progress.setValue(int(overall))
+                        eta_str = ""
+                        if eta_sec is not None and eta_sec >= 0:
+                            mins = eta_sec // 60
+                            secs = eta_sec % 60
+                            eta_str = f" • осталось {mins}м {secs}с"
+                        self.progress_label.setText(
+                            f"Сегмент {si + 1}/{n} — {int(overall)}%{eta_str}")
+                    QTimer.singleShot(0, _update)
+
+                results = self.detector.analyze_video(
+                    vpath,
+                    drone_mode=self.drone_check.isChecked(),
+                    confidence=0.35,
+                    progress_callback=queue_progress,
+                    cancel_event=self.cancel_event,
+                    start_sec=start_sec,
+                    end_sec=end_sec,
+                )
+
+                # Помечаем ручные метки (Блок Д)
+                if is_manual:
+                    for m in results:
+                        m["manual"] = True
+                    self._save_manual_marks(vpath, results)
+
+                total_moments += len(results)
+                all_results.extend(results)
+                self._log(f"  ✅ Сегмент {si + 1}: {len(results)} моментов")
+
+                # HTML для сегмента (обновляем правую панель)
+                try:
+                    from core.report_html import generate_html
+                    html_path = generate_html(
+                        vpath, results,
+                        report_data={
+                            "model": self.detector.model_name,
+                            "hardware": self.detector.hw,
+                            "created_at": datetime.datetime.now().isoformat(),
+                            "moments_count": len(results),
+                        },
+                    )
+                    self.last_html_path = html_path
+                    QTimer.singleShot(0, lambda p=html_path: self._load_html(p))
+                except Exception as e:
+                    self._log(f"  ⚠️ HTML: {e}")
+
+            if not cancelled:
+                self._log(f"✅ Очередь завершена: {n} сегментов, {total_moments} моментов")
+                self.status_bar.showMessage(
+                    f"✅ Готово: {n} сегментов, {total_moments} моментов", 5000)
+        except Exception as e:
+            self._log(f"❌ Ошибка очереди: {e}")
+        finally:
+            def _restore():
+                self.analyze_btn.setEnabled(True)
+                self.batch_btn.setEnabled(True)
+                self.analyze_queue_btn.setEnabled(True)
+                if cancelled:
+                    self.progress_label.setText("⏹ Отменено")
+            QTimer.singleShot(0, _restore)
+
+    # ── Блок Д: ручные метки ──
+    def _on_manual_mark(self):
+        """Пометить момент (🚩): текущий кадр ±2 сек → в очередь с пометкой "ручная"."""
+        if not self.video_path:
+            QMessageBox.warning(self, "Ошибка", "Сначала выберите видео!")
+            return
+
+        fps = self.player_thread.fps or 25.0
+        cur_sec = self.seek_slider.value() / fps
+        start_sec = max(0, cur_sec - 2)
+        end_sec = cur_sec + 2
+
+        in_ts = str(datetime.timedelta(seconds=int(start_sec)))
+        out_ts = str(datetime.timedelta(seconds=int(end_sec)))
+        label = f"🚩 {os.path.basename(self.video_path)} [{in_ts}–{out_ts}]"
+
+        # Добавляем в очередь с пометкой manual=True
+        file_item = None
+        for i in range(self.queue_tree.topLevelItemCount()):
+            it = self.queue_tree.topLevelItem(i)
+            if it.data(0, Qt.UserRole) == self.video_path:
+                file_item = it
+                break
+        if not file_item:
+            file_item = QTreeWidgetItem([os.path.basename(self.video_path), ""])
+            file_item.setData(0, Qt.UserRole, self.video_path)
+            self.queue_tree.addTopLevelItem(file_item)
+
+        seg_item = QTreeWidgetItem([f"🚩 {in_ts}–{out_ts}", label])
+        seg_item.setData(0, Qt.UserRole, {
+            "video": self.video_path,
+            "start_sec": start_sec,
+            "end_sec": end_sec,
+            "manual": True,
+        })
+        file_item.addChild(seg_item)
+        self.queue_tree.expandItem(file_item)
+        self._log(f"🚩 Ручная метка: {label}")
+
+    def _save_manual_marks(self, video_path, moments):
+        """Дописывает ручные метки в output/manual_marks.json (Блок Д)."""
+        try:
+            out_dir = Path("output")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            marks_file = out_dir / "manual_marks.json"
+
+            existing = []
+            if marks_file.exists():
+                with open(marks_file, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+
+            for m in moments:
+                existing.append({
+                    "video": video_path,
+                    "timestamp": m.get("timestamp", ""),
+                    "frame": m.get("frame", 0),
+                    "tag": "ручная метка",
+                    "objects": m.get("objects", []),
+                })
+
+            with open(marks_file, "w", encoding="utf-8") as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self._log(f"⚠️ manual_marks.json: {e}")
+
+    # ── Блок Е: сессии ──
+    def _on_save_session(self):
+        """Сохраняет сессию (очередь, текущий файл, in/out) в JSON (Блок Е)."""
+        try:
+            queue_data = []
+            for i in range(self.queue_tree.topLevelItemCount()):
+                file_item = self.queue_tree.topLevelItem(i)
+                for j in range(file_item.childCount()):
+                    seg = file_item.child(j)
+                    data = seg.data(0, Qt.UserRole)
+                    if data:
+                        queue_data.append(data)
+
+            session = {
+                "video_path": self.video_path,
+                "in_marker": self.in_marker,
+                "out_marker": self.out_marker,
+                "queue": queue_data,
+                "saved_at": datetime.datetime.now().isoformat(),
+            }
+
+            out_dir = Path("output")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = out_dir / f"session_{ts}.json"
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(session, f, ensure_ascii=False, indent=2)
+            self._log(f"💾 Сессия сохранена: {path}")
+        except Exception as e:
+            self._log(f"❌ Ошибка сохранения сессии: {e}")
+
+    def _on_load_session(self):
+        """Загружает сессию из JSON (Блок Е)."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Загрузить сессию", "output", "JSON (*.json)")
+        if not path:
+            return
+        self._load_session_from(path)
+
+    def _load_session_from(self, path):
+        """Восстанавливает состояние из файла сессии (Блок Е)."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                session = json.load(f)
+
+            # Восстанавливаем очередь
+            self.queue_tree.clear()
+            for seg in session.get("queue", []):
+                vpath = seg.get("video", "")
+                if not vpath:
+                    continue
+                file_item = None
+                for i in range(self.queue_tree.topLevelItemCount()):
+                    it = self.queue_tree.topLevelItem(i)
+                    if it.data(0, Qt.UserRole) == vpath:
+                        file_item = it
+                        break
+                if not file_item:
+                    file_item = QTreeWidgetItem([os.path.basename(vpath), ""])
+                    file_item.setData(0, Qt.UserRole, vpath)
+                    self.queue_tree.addTopLevelItem(file_item)
+
+                start_sec = seg.get("start_sec", 0)
+                end_sec = seg.get("end_sec")
+                in_ts = str(datetime.timedelta(seconds=int(start_sec)))
+                out_ts = str(datetime.timedelta(
+                    seconds=int(end_sec))) if end_sec else "конец"
+                prefix = "🚩 " if seg.get("manual") else ""
+                seg_item = QTreeWidgetItem([f"{prefix}{in_ts}–{out_ts}", ""])
+                seg_item.setData(0, Qt.UserRole, seg)
+                file_item.addChild(seg_item)
+                self.queue_tree.expandItem(file_item)
+
+            # Восстанавливаем текущий файл и маркеры
+            vpath = session.get("video_path", "")
+            if vpath and os.path.exists(vpath):
+                self._load_video(vpath)
+            self.in_marker = session.get("in_marker", 0)
+            self.out_marker = session.get("out_marker", 0)
+            self._on_set_in()  # обновит подпись
+
+            self._log(f"📂 Сессия загружена: {path}")
+        except Exception as e:
+            self._log(f"❌ Ошибка загрузки сессии: {e}")
+
+    def _check_saved_session(self):
+        """При старте PRO — ненавязчивая кнопка "Продолжить сессию" (Блок Е)."""
+        try:
+            out_dir = Path("output")
+            if not out_dir.exists():
+                return
+            sessions = sorted(out_dir.glob("session_*.json"), reverse=True)
+            if not sessions:
+                return
+            latest = str(sessions[0])
+            # Добавляем временную кнопку в статус-бар
+            continue_btn = QPushButton("📂 Продолжить сессию")
+            continue_btn.setStyleSheet("background:#00E5FF; color:#000000; padding:2px 8px;")
+            continue_btn.clicked.connect(lambda: self._load_session_from(latest))
+            self.status_bar.addPermanentWidget(continue_btn)
+        except Exception:
+            pass
 
     # ── Маскировка ключа ──
     def _toggle_key_visibility(self):
