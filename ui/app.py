@@ -26,187 +26,9 @@ _C_SUCCESS = "#00FF88"
 _C_ERROR = "#FF3B30"
 _C_FONT_MONO = ("Consolas", 12)
 
-# Цвета для bbox разных классов
-_COLORS = [
-    "#ff4444", "#44ff44", "#4444ff", "#ffff44", "#ff44ff",
-    "#44ffff", "#ff8844", "#88ff44", "#4488ff", "#ff4488",
-]
-
-
-def _get_color(class_name):
-    """Детерминированный цвет для класса по хэшу имени."""
-    return _COLORS[hash(class_name) % len(_COLORS)]
-
-
-def _draw_boxes(frame, objects):
-    """Рисует рамки bbox и имена классов на кадре."""
-    annotated = frame.copy()
-    h, w = annotated.shape[:2]
-    thickness = max(1, int(min(h, w) / 300))
-
-    for obj in objects:
-        x1, y1, x2, y2 = [int(v) for v in obj["bbox"]]
-        color = _get_color(obj["class"])
-        # BGR цвет для cv2
-        b, g, r = tuple(int(color[i:i+2], 16) for i in (1, 3, 5))
-
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (b, g, r), thickness)
-
-        # Подпись
-        label = f"{obj['class']} {obj['confidence']:.2f}"
-        font_scale = max(0.4, min(h, w) / 800)
-        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
-        cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), (b, g, r), -1)
-        cv2.putText(annotated, label, (x1 + 2, y1 - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
-
-    return annotated
-
-
-def _frame_to_ctkimage(frame, max_width=480):
-    """Конвертирует BGR-кадр в CTkImage с заданной шириной."""
-    h, w = frame.shape[:2]
-    scale = max_width / w if w > max_width else 1.0
-    new_w = int(w * scale)
-    new_h = int(h * scale)
-    if scale < 1.0:
-        frame = cv2.resize(frame, (new_w, new_h))
-
-    # BGR -> RGB
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(rgb)
-    return ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(new_w, new_h))
-
-
-def _extract_frame(video_path, frame_idx):
-    """Достаёт конкретный кадр из видео по индексу."""
-    cap = cv2.VideoCapture(video_path)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-    ret, frame = cap.read()
-    cap.release()
-    return frame if ret else None
-
-
-def open_gallery(parent, video_path, moments, cloud_annotations=None):
-    """Открывает окно галереи моментов.
-
-    Аргументы:
-      parent             — родительское окно;
-      video_path         — путь к видео;
-      moments            — список моментов [{timestamp, frame, objects}];
-      cloud_annotations  — dict {frame_idx: str} — ответы слоя 4 (опционально).
-    """
-    if not moments:
-        return
-
-    cloud_annotations = cloud_annotations or {}
-
-    gallery = ctk.CTkToplevel(parent)
-    gallery.title(f"🎞 Галерея моментов ({len(moments)})")
-    gallery.geometry("1000x700")
-
-    # Заголовок
-    ctk.CTkLabel(
-        gallery,
-        text=f"Найдено моментов: {len(moments)}",
-        font=ctk.CTkFont(size=16, weight="bold"),
-    ).pack(pady=10)
-
-    # Прогресс генерации миниатюр
-    gen_label = ctk.CTkLabel(gallery, text="🖼 Генерация галереи...", text_color="#88ccff")
-    gen_label.pack(pady=5)
-
-    # Скроллируемый контейнер
-    scroll = ctk.CTkScrollableFrame(gallery)
-    scroll.pack(padx=10, pady=10, fill="both", expand=True)
-
-    # Ограничиваем до 200 моментов
-    display_moments = moments[:200]
-    cards = []
-
-    def generate_thumbnails():
-        """Генерирует миниатюры в отдельном потоке."""
-        for i, moment in enumerate(display_moments):
-            frame = _extract_frame(video_path, moment["frame"])
-            if frame is None:
-                continue
-
-            # Рисуем рамки
-            annotated = _draw_boxes(frame, moment["objects"])
-            ctk_img = _frame_to_ctkimage(annotated, max_width=480)
-
-            # Подпись
-            obj_summary = ", ".join(
-                f"{o['class']} {o['confidence']:.2f}" for o in moment["objects"][:5]
-            )
-            caption = f"{moment['timestamp']} — {obj_summary}"
-
-            # Аннотация слоя 4 (если есть)
-            cloud_text = cloud_annotations.get(moment["frame"], "")
-
-            # Обновляем UI через after
-            def _add_card(img=ctk_img, cap=caption, cloud=cloud_text, idx=i, fr=frame, m=moment):
-                card = ctk.CTkFrame(scroll)
-                card.pack(pady=5, padx=10, fill="x")
-
-                thumb = ctk.CTkLabel(card, image=img, text="")
-                thumb.image = img
-                thumb.pack(side="left", padx=10, pady=10)
-
-                info = ctk.CTkLabel(card, text=cap,
-                                    font=ctk.CTkFont(_C_FONT_MONO[0], 13),
-                                    wraplength=400, text_color=_C_TEXT)
-                info.pack(side="left", padx=10, pady=5, anchor="n")
-
-                if cloud:
-                    cloud_label = ctk.CTkLabel(
-                        card, text=f"☁️ {cloud[:200]}",
-                        font=ctk.CTkFont(size=11), text_color="#ffcc88",
-                        wraplength=400, justify="left",
-                    )
-                    cloud_label.pack(side="left", padx=10, pady=5, anchor="s")
-
-                # Двойной клик — открыть полный кадр
-                def _on_double_click(e=None, f=fr, mm=m):
-                    _show_full_frame(gallery, f, mm)
-
-                card.bind("<Double-Button-1>", _on_double_click)
-                thumb.bind("<Double-Button-1>", _on_double_click)
-                cards.append(card)
-
-            gallery.after(0, _add_card)
-
-            # Обновляем прогресс
-            def _update_progress(idx=i):
-                gen_label.configure(text=f"🖼 Генерация галереи... {idx + 1}/{len(display_moments)}")
-            gallery.after(0, _update_progress)
-
-        def _done():
-            gen_label.configure(text=f"✅ Галерея готова ({len(display_moments)} моментов)")
-        gallery.after(0, _done)
-
-    threading.Thread(target=generate_thumbnails, daemon=True).start()
-
-
-def _show_full_frame(parent, frame, moment):
-    """Показывает полный кадр в отдельном окне."""
-    win = ctk.CTkToplevel(parent)
-    win.title(f"Кадр {moment['timestamp']}")
-
-    annotated = _draw_boxes(frame, moment["objects"])
-    # Ограничиваем размер до 1200px по ширине
-    ctk_img = _frame_to_ctkimage(annotated, max_width=1200)
-
-    label = ctk.CTkLabel(win, image=ctk_img, text="")
-    label.image = ctk_img
-    label.pack(padx=10, pady=10)
-
-    obj_summary = ", ".join(
-        f"{o['class']} {o['confidence']:.2f}" for o in moment["objects"]
-    )
-    ctk.CTkLabel(win, text=f"{moment['timestamp']} — {obj_summary}",
-                 font=ctk.CTkFont(_C_FONT_MONO[0], 13),
-                 text_color=_C_TEXT).pack(pady=5)
+# ── Галерея удалена (п.А1): вместо неё — HTML-отчёт в браузере ──
+# Функции open_gallery, _show_full_frame, _draw_boxes, _frame_to_ctkimage,
+# _extract_frame, _get_color убраны — HTML v2 заменяет галерею полностью.
 
 
 def launch():
@@ -289,12 +111,29 @@ def launch():
     ).pack(padx=10, pady=(10, 2), anchor="w")
 
     api_key_var = ctk.StringVar(value=os.getenv("NVIDIA_API_KEY", ""))
+    # Маскировка ключа (п.3): show="*" по умолчанию, toggle через 👁
     api_key_entry = ctk.CTkEntry(
         cloud_frame, textvariable=api_key_var, width=400,
         placeholder_text="nvapi-...", fg_color="#000000", border_color="#1E1E1E",
-        text_color="#E0E0E0",
+        text_color="#E0E0E0", show="*",
     )
-    api_key_entry.pack(padx=10, pady=2, fill="x")
+    api_key_entry.pack(padx=10, pady=2, side="left", fill="x", expand=True)
+
+    # Иконка 👁 — показать/скрыть ключ
+    def toggle_key_visibility():
+        if api_key_entry.cget("show") == "*":
+            api_key_entry.configure(show="")
+            key_toggle_btn.configure(text="🙈")
+        else:
+            api_key_entry.configure(show="*")
+            key_toggle_btn.configure(text="👁")
+
+    key_toggle_btn = ctk.CTkButton(
+        cloud_frame, text="👁", command=toggle_key_visibility,
+        fg_color="#1E1E1E", hover_color="#2A2A2A", text_color="#00E5FF",
+        width=45, height=32,
+    )
+    key_toggle_btn.pack(padx=(5, 10), pady=2, side="left")
 
     def save_api_key():
         """Сохраняет/обновляет NVIDIA_API_KEY в .env, не трогая остальные строки."""
@@ -354,6 +193,11 @@ def launch():
     conf_slider.set(0.35)
     conf_slider.grid(row=1, column=2, padx=10, sticky="ew")
 
+    # Подпись над прогресс-баром (п.4: "45% • осталось 1м 32с")
+    progress_label = ctk.CTkLabel(app, text="0%", text_color=_C_TEXT_SEC,
+                                  font=ctk.CTkFont(_C_FONT_MONO[0], 11))
+    progress_label.pack(padx=20, anchor="w")
+
     # Прогресс и лог
     progress = ctk.CTkProgressBar(app, progress_color=_C_ACCENT, fg_color=_C_BORDER)
     progress.pack(padx=20, fill="x")
@@ -373,8 +217,11 @@ def launch():
     log_msg(f"🤖 Модель: {detector.model_name}")
     log_msg(f"🖥️ Провайдеры: {', '.join(detector.providers)}")
 
-    # Проверка доступности слоя 4
-    if nvidia_client.is_available():
+    # Проверка прокси-политики (п.Б4): без NVIDIA_PROXY облако не вызывается
+    _nvidia_proxy = os.getenv("NVIDIA_PROXY", "")
+    if not _nvidia_proxy:
+        log_msg("☁️ Облако отключено: политика — только через прокси")
+    elif nvidia_client.is_available():
         log_msg("☁️ Слой 4 (NVIDIA Vision) доступен")
     else:
         log_msg("☁️ Слой 4 недоступен офлайн — работаем на локальных слоях")
@@ -388,22 +235,32 @@ def launch():
     last_html_path = {"value": None}
     last_report_path = {"value": None}
 
-    def on_progress(percent, timestamp_str, objects, extra_log=None):
+    def on_progress(percent, timestamp_str, objects, extra_log=None, eta_sec=None):
         """Колбэк прогресса из детектора (вызывается из рабочего потока).
 
         Аргументы:
           percent       — процент выполнения (0..100);
           timestamp_str — таймкод текущего кадра;
           objects       — список найденных объектов;
-          extra_log     — опциональное сообщение для лога (напр. о стоп-кадрах).
+          extra_log     — опциональное сообщение для лога (напр. о стоп-кадрах);
+          eta_sec       — опциональная оценка оставшегося времени (сек).
         """
         def _update():
             progress.set(min(percent / 100.0, 1.0))
+            # ETA: форматируем "1м 32с"
+            eta_str = ""
+            if eta_sec is not None and eta_sec >= 0:
+                mins = eta_sec // 60
+                secs = eta_sec % 60
+                eta_str = f" • осталось {mins}м {secs}с"
+                # Подпись над прогресс-баром
+                progress_label.configure(text=f"{int(percent)}%{eta_str}")
             if extra_log:
                 log_msg(extra_log)
             elif objects:
                 classes = [o["class"] for o in objects]
-                log_msg(f"⏱️ {timestamp_str} | {len(objects)} объектов: {', '.join(classes[:5])}")
+                log_msg(f"⏱️ [{int(percent)}%]{eta_str} | {timestamp_str} | "
+                        f"{len(objects)} объектов: {', '.join(classes[:5])}")
         app.after(0, _update)
 
     def _run_cloud_analysis(video_path, results):
@@ -512,9 +369,9 @@ def launch():
             except Exception as e:
                 app.after(0, lambda err=e: log_msg(f"⚠️ HTML-отчёт не создан: {err}"))
 
-            # Галерея (автооткрытие после анализа — существующая логика)
-            if results:
-                app.after(0, lambda: open_gallery(app, path, results, cloud_annotations))
+            # Вместо галереи (п.А1) — открываем HTML-отчёт в браузере
+            if results and last_html_path["value"]:
+                app.after(0, lambda p=last_html_path["value"]: webbrowser.open(p))
             else:
                 app.after(0, lambda: log_msg("Ничего не найдено"))
 
@@ -901,7 +758,7 @@ def launch():
             )
             return
 
-        # Заполняем last_video_path/last_moments, чтобы кнопка "🎞 Галерея" тоже работала
+        # Заполняем переменные (для возможных будущих действий)
         last_video_path["value"] = video_path
         last_moments["value"] = moments
         last_report_path["value"] = report_file
@@ -910,8 +767,21 @@ def launch():
         log_msg(f"   Видео: {video_path}")
         log_msg(f"   Моментов: {len(moments)}")
 
-        # Открываем галерею с загруженными данными
-        open_gallery(app, video_path, moments)
+        # Генерируем HTML из загруженного отчёта и открываем в браузере (п.А1)
+        try:
+            from core.report_html import generate_html
+            report_data = {
+                "model": data.get("model", ""),
+                "hardware": data.get("hardware", {}),
+                "created_at": data.get("created_at", ""),
+                "moments_count": len(moments),
+            }
+            html_path = generate_html(video_path, moments, report_data=report_data)
+            last_html_path["value"] = html_path
+            webbrowser.open(html_path)
+            log_msg(f"📄 HTML-отчёт: {html_path}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось создать HTML:\n{e}")
 
     # ── Кнопка "📄 Открыть HTML" (п.3) ──
     def open_html_click():
@@ -934,54 +804,36 @@ def launch():
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось открыть HTML:\n{e}")
 
-    # Фрейм с кнопками "Начать анализ" и "Галерея"
+    # ── Фрейм с кнопками (п.А2): [📄 Файл][📁 Папка][📂 Открыть отчёт]
+    #    [📄 Открыть HTML][▶️ Анализ] ──
     btn_frame = ctk.CTkFrame(app, fg_color=_C_BG)
     btn_frame.pack(pady=10)
 
-    start_btn = ctk.CTkButton(
+    # Кнопка "📄 Файл" — выбор одиночного видео
+    file_btn = ctk.CTkButton(
         btn_frame,
-        text="▶️ Начать анализ",
-        command=start_analysis,
-        fg_color=_C_SUCCESS,
-        hover_color="#00CC6E",
-        text_color="#000000",
-        height=45,
-        width=220,
-    )
-    start_btn.pack(side="left", padx=10)
-
-    def open_gallery_click():
-        """Обработчик кнопки '🎞 Галерея'."""
-        if not last_moments["value"]:
-            messagebox.showinfo("Галерея", "Анализ ещё не выполнялся")
-            return
-        open_gallery(app, last_video_path["value"], last_moments["value"])
-
-    gallery_btn = ctk.CTkButton(
-        btn_frame,
-        text="🎞 Галерея",
-        command=open_gallery_click,
+        text="📄 Файл",
+        command=choose_video,
         fg_color=_C_ACCENT,
         hover_color=_C_ACCENT_HOVER,
         text_color="#000000",
         height=45,
-        width=180,
+        width=140,
     )
-    gallery_btn.pack(side="left", padx=10)
+    file_btn.pack(side="left", padx=8)
 
-    # ── Новые кнопки (п.1, п.2, п.3) в AMOLED-стиле ──
-    # Кнопка "📁 Папка (пакетно)" — пакетная обработка папки
+    # Кнопка "📁 Папка" — пакетная обработка папки
     batch_btn = ctk.CTkButton(
         btn_frame,
-        text="📁 Папка (пакетно)",
+        text="📁 Папка",
         command=start_batch,
         fg_color=_C_ACCENT,
         hover_color=_C_ACCENT_HOVER,
         text_color="#000000",
         height=45,
-        width=200,
+        width=140,
     )
-    batch_btn.pack(side="left", padx=10)
+    batch_btn.pack(side="left", padx=8)
 
     # Кнопка "📂 Открыть отчёт" — загрузка JSON-отчёта
     open_report_btn = ctk.CTkButton(
@@ -992,9 +844,9 @@ def launch():
         hover_color=_C_ACCENT_HOVER,
         text_color="#000000",
         height=45,
-        width=200,
+        width=180,
     )
-    open_report_btn.pack(side="left", padx=10)
+    open_report_btn.pack(side="left", padx=8)
 
     # Кнопка "📄 Открыть HTML" — открыть HTML-отчёт в браузере
     open_html_btn = ctk.CTkButton(
@@ -1005,9 +857,22 @@ def launch():
         hover_color=_C_ACCENT_HOVER,
         text_color="#000000",
         height=45,
-        width=200,
+        width=180,
     )
-    open_html_btn.pack(side="left", padx=10)
+    open_html_btn.pack(side="left", padx=8)
+
+    # Кнопка "▶️ Анализ" — запуск одиночного анализа
+    start_btn = ctk.CTkButton(
+        btn_frame,
+        text="▶️ Анализ",
+        command=start_analysis,
+        fg_color=_C_SUCCESS,
+        hover_color="#00CC6E",
+        text_color="#000000",
+        height=45,
+        width=160,
+    )
+    start_btn.pack(side="left", padx=8)
 
     app.mainloop()
 

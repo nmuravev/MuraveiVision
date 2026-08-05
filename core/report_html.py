@@ -1,21 +1,29 @@
-"""Генератор самодостаточного HTML-отчёта (AMOLED-стиль).
+"""Генератор самодостаточного HTML-отчёта v2 (AMOLED-стиль).
 
 generate_html(...) создаёт output/<video_stem>_report.html:
-  - миниатюры (ширина 480, JPEG quality 70) встроены как base64;
-  - файл самодостаточен (можно отправить коллеге — откроется в браузере);
-  - шапка: видео, дата, железо, модель, настройки;
-  - карточки моментов: время, классы, confidence;
-  - вердикты слоя 4 (если есть);
-  - максимум 200 миниатюр.
+  - раскладка карточки: фото сверху (520px), снизу мета-строка
+    [🕐 ЧЧ-ММ-СС] [класс1] [класс2] [0.87] [verdict слоя 4];
+  - поиск по классу, сортировка (время/confidence), фильтр "только с вердиктом";
+  - чекбоксы выбора у карточек;
+  - плавающая панель: [💾 Сохранить выбранные] (ZIP через JSZip),
+    [📋 Скачать JSON];
+  - НЕТ лимита 200 — все объекты;
+  - миниатюры (520px, JPEG quality 70) встроены как base64;
+  - классы на русском (через ru()).
 """
 import base64
 import datetime
+import json
+import zipfile
+import io
 from pathlib import Path
 
 import cv2
 
+from core.classes import ru
 
-# ── AMOLED-палитра (как в GUI) ──
+
+# ── AMOLED-палитра ──
 _C_BG = "#000000"
 _C_CARD = "#0D0D0D"
 _C_BORDER = "#1E1E1E"
@@ -26,11 +34,8 @@ _C_TEXT = "#E0E0E0"
 _C_TEXT_SEC = "#8A8A8A"
 
 
-def _frame_to_base64(frame, max_width=480, quality=70):
-    """Масштабирует BGR-кадр по ширине и кодирует в base64 JPEG.
-
-    Возвращает строку data URL для <img src="...">.
-    """
+def _frame_to_base64(frame, max_width=520, quality=70):
+    """Масштабирует BGR-кадр по ширине и кодирует в base64 JPEG."""
     h, w = frame.shape[:2]
     scale = max_width / w if w > max_width else 1.0
     if scale < 1.0:
@@ -46,7 +51,7 @@ def _frame_to_base64(frame, max_width=480, quality=70):
 
 
 def _draw_boxes(frame, objects):
-    """Рисует рамки bbox и имена классов на кадре (для миниатюры)."""
+    """Рисует рамки bbox и имена классов (на русском) на кадре."""
     annotated = frame.copy()
     h, w = annotated.shape[:2]
     thickness = max(1, int(min(h, w) / 300))
@@ -62,7 +67,9 @@ def _draw_boxes(frame, objects):
         b, g, r = colors[i % len(colors)]
         cv2.rectangle(annotated, (x1, y1), (x2, y2), (b, g, r), thickness)
 
-        label = f"{obj['class']} {obj['confidence']:.2f}"
+        # Подпись: класс (рус) + confidence
+        cls_display = ru(obj.get("class_en", obj.get("class", "")))
+        label = f"{cls_display} {obj['confidence']:.2f}"
         font_scale = max(0.4, min(h, w) / 800)
         (tw, th), _ = cv2.getTextSize(
             label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
@@ -117,7 +124,7 @@ def _build_header(video_path, report_data, settings):
 
     return f"""
     <header class='header'>
-        <h1>🎯 MuraveiVision — Отчёт</h1>
+        <h1>🎯 MuraveiVision — Отчёт v2</h1>
         <div class='meta'>
             <div class='kv-row'><span class='kv-key'>Видео</span>
                 <span class='kv-val mono'>{_esc(video_path)}</span></div>
@@ -135,62 +142,20 @@ def _build_header(video_path, report_data, settings):
     """
 
 
-def _build_card(moment, idx, cloud_annotations=None):
-    """Карточка одного момента: миниатюра, время, классы, confidence, вердикт слоя 4."""
-    cloud_annotations = cloud_annotations or {}
-    ts = moment.get("timestamp", "")
-    frame_idx = moment.get("frame", 0)
-    objects = moment.get("objects", [])
-
-    # Список классов с confidence
-    obj_lines = ""
-    for o in objects:
-        cls = _esc(o.get("class", ""))
-        conf = o.get("confidence", 0)
-        obj_lines += (
-            f"<div class='obj-row'>"
-            f"<span class='obj-class'>{cls}</span>"
-            f"<span class='obj-conf'>{conf:.2f}</span></div>"
-        )
-
-    # Вердикт слоя 4 (если есть)
-    cloud_text = cloud_annotations.get(frame_idx, "")
-    cloud_block = ""
-    if cloud_text:
-        cloud_block = (
-            f"<div class='cloud-verdict'>"
-            f"<div class='cloud-title'>☁️ Слой 4 (NVIDIA Vision):</div>"
-            f"<div class='cloud-text'>{_esc(cloud_text[:500])}</div></div>"
-        )
-
-    # Миниатюра — заглушка, заполнится при генерации (data-img-id)
-    return f"""
-    <div class='card' data-img-id='{idx}'>
-        <div class='card-thumb'><img class='thumb' alt='moment {idx}' /></div>
-        <div class='card-info'>
-            <div class='card-ts mono'>⏱️ {ts}</div>
-            <div class='card-objs'>{obj_lines}</div>
-            {cloud_block}
-        </div>
-    </div>
-    """
-
-
 def generate_html(video_path, moments, report_data=None, settings=None,
-                  cloud_annotations=None, output_dir="output",
-                  max_thumbnails=200):
-    """Генерирует самодостаточный HTML-отчёт.
+                  cloud_annotations=None, output_dir="output"):
+    """Генерирует самодостаточный HTML-отчёт v2.
 
     Аргументы:
       video_path        — путь к видеофайлу;
       moments           — список моментов [{timestamp, frame, objects}];
       report_data       — dict с метаданными (model, hardware, created_at, moments_count);
-      settings          — dict настроек анализа (drone_mode, confidence, ...);
+      settings          — dict настроек анализа;
       cloud_annotations — dict {frame_idx: str} — ответы слоя 4 (опционально);
-      output_dir        — папка для сохранения HTML;
-      max_thumbnails    — максимум миниатюр (200).
+      output_dir        — папка для сохранения HTML.
 
     Возвращает путь к созданному HTML-файлу (str).
+    Лимита 200 НЕТ — все объекты.
     """
     report_data = report_data or {}
     cloud_annotations = cloud_annotations or {}
@@ -201,23 +166,15 @@ def generate_html(video_path, moments, report_data=None, settings=None,
     video_stem = Path(video_path).stem
     out_file = out_dir / f"{video_stem}_report.html"
 
-    # Ограничиваем количество моментов для миниатюр
-    display_moments = moments[:max_thumbnails]
-
     # Шапка
     header_html = _build_header(video_path, report_data, settings)
 
-    # Карточки (с заглушками под миниатюры)
-    cards_html = ""
-    for i, moment in enumerate(display_moments):
-        cards_html += _build_card(moment, i, cloud_annotations)
-
-    # CSS в AMOLED-стиле
+    # CSS в AMOLED-стиле v2
     css = f"""
     <style>
     * {{ box-sizing: border-box; }}
     body {{
-        margin: 0; padding: 20px;
+        margin: 0; padding: 20px; padding-bottom: 80px;
         background: {_C_BG}; color: {_C_TEXT};
         font-family: 'Segoe UI', 'Roboto', sans-serif;
     }}
@@ -231,78 +188,333 @@ def generate_html(video_path, moments, report_data=None, settings=None,
     .kv-row {{ display: flex; gap: 12px; font-size: 14px; }}
     .kv-key {{ color: {_C_TEXT_SEC}; min-width: 100px; }}
     .kv-val {{ color: {_C_TEXT}; }}
-    .settings {{
-        margin-top: 12px; padding-top: 12px;
-        border-top: 1px solid {_C_BORDER};
+    .settings {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid {_C_BORDER}; }}
+
+    /* ── Панель управления сверху ── */
+    .toolbar {{
+        position: sticky; top: 0; z-index: 100;
+        background: {_C_CARD}; border: 1px solid {_C_BORDER};
+        border-radius: 10px; padding: 12px; margin-bottom: 20px;
+        display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    }}
+    .toolbar input[type="text"] {{
+        background: #000; border: 1px solid {_C_BORDER}; color: {_C_TEXT};
+        padding: 8px 12px; border-radius: 6px; font-size: 14px; width: 200px;
+    }}
+    .toolbar select {{
+        background: #000; border: 1px solid {_C_BORDER}; color: {_C_TEXT};
+        padding: 8px 12px; border-radius: 6px; font-size: 14px;
+    }}
+    .toolbar label {{ color: {_C_TEXT_SEC}; font-size: 13px; cursor: pointer; }}
+
+    /* ── Карточки v2: фото сверху, мета снизу ── */
+    .grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(540px, 1fr));
+        gap: 16px;
     }}
     .card {{
-        display: flex; gap: 16px;
         background: {_C_CARD}; border: 1px solid {_C_BORDER};
-        border-radius: 10px; padding: 12px; margin-bottom: 14px;
+        border-radius: 10px; overflow: hidden;
+        transition: box-shadow 0.2s, border-color 0.2s;
     }}
-    .card-thumb img {{ width: 480px; border-radius: 6px; display: block; }}
-    .card-info {{ flex: 1; }}
-    .card-ts {{
-        color: {_C_ACCENT}; font-size: 16px; font-weight: bold; margin-bottom: 8px;
+    .card:hover {{
+        border-color: {_C_ACCENT};
+        box-shadow: 0 0 12px rgba(0, 229, 255, 0.3);
     }}
-    .card-objs {{ display: flex; flex-direction: column; gap: 4px; }}
-    .obj-row {{ display: flex; justify-content: space-between; max-width: 300px; }}
-    .obj-class {{ color: {_C_TEXT}; }}
-    .obj-conf {{ color: {_C_SUCCESS}; font-family: 'Consolas', monospace; }}
-    .cloud-verdict {{
-        margin-top: 10px; padding: 10px;
-        background: #1a1500; border: 1px solid #ffcc88; border-radius: 6px;
+    .card.hidden {{ display: none; }}
+    .card-thumb {{ position: relative; }}
+    .card-thumb img {{ width: 100%; display: block; }}
+    .card-check {{
+        position: absolute; top: 8px; right: 8px;
+        width: 24px; height: 24px; cursor: pointer;
+        accent-color: {_C_ACCENT};
     }}
-    .cloud-title {{ color: #ffcc88; font-size: 13px; font-weight: bold; margin-bottom: 4px; }}
-    .cloud-text {{ color: #e8d8a0; font-size: 12px; white-space: pre-wrap; }}
+    .card-meta {{
+        padding: 10px 12px; display: flex; flex-wrap: wrap;
+        gap: 8px; align-items: center; font-size: 13px;
+    }}
+    .meta-ts {{ color: {_C_ACCENT}; font-weight: bold; font-family: 'Consolas', monospace; }}
+    .meta-class {{
+        background: #1a1a1a; border: 1px solid {_C_BORDER};
+        padding: 2px 8px; border-radius: 4px; color: {_C_TEXT};
+    }}
+    .meta-conf {{ color: {_C_SUCCESS}; font-family: 'Consolas', monospace; }}
+    .meta-verdict {{
+        color: #ffcc88; font-size: 12px; font-style: italic;
+        background: #1a1500; padding: 2px 8px; border-radius: 4px;
+        max-width: 300px; overflow: hidden; text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+
+    /* ── Плавающая панель снизу ── */
+    .float-panel {{
+        position: fixed; bottom: 0; left: 0; right: 0;
+        background: {_C_CARD}; border-top: 1px solid {_C_BORDER};
+        padding: 12px 20px; display: flex; gap: 12px;
+        justify-content: center; z-index: 200;
+    }}
+    .float-btn {{
+        background: {_C_ACCENT}; color: #000; border: none;
+        padding: 10px 20px; border-radius: 6px; font-size: 14px;
+        font-weight: bold; cursor: pointer;
+    }}
+    .float-btn:hover {{ background: {_C_ACCENT_HOVER}; }}
+    .float-btn.secondary {{ background: #333; color: {_C_TEXT}; }}
+
     .footer {{ text-align: center; color: {_C_TEXT_SEC}; margin-top: 30px; font-size: 12px; }}
     </style>
     """
 
-    # JS: подставляет base64-миниатюры в заглушки (генерируются в Python)
-    # Сами data-URL вставляем прямо в <script> как объект
-    thumbs_js = "<script>\nvar _thumbs = {};\n</script>\n"
+    # JS: поиск, сортировка, фильтр, чекбоксы, сохранение выбранных (ZIP), JSON
+    # Данные моментов встраиваем как JSON для JS-обработки
+    moments_js_data = []
+    for i, m in enumerate(moments):
+        objs = []
+        for o in m.get("objects", []):
+            cls_display = ru(o.get("class_en", o.get("class", "")))
+            objs.append({
+                "class": cls_display,
+                "confidence": o.get("confidence", 0),
+            })
+        moments_js_data.append({
+            "idx": i,
+            "timestamp": m.get("timestamp", ""),
+            "frame": m.get("frame", 0),
+            "objects": objs,
+            "has_verdict": str(m.get("frame", 0)) in [str(k) for k in cloud_annotations.keys()],
+        })
 
-    html = f"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MuraveiVision — Отчёт — {Path(video_path).stem}</title>
-{css}
-</head>
-<body>
-{header_html}
-<main>
-{cards_html}
-</main>
-<div class="footer">Сгенерировано MuraveiVision · {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
-{thumbs_js}
-</body>
-</html>
-"""
-
-    # Теперь генерируем миниатюры и вставляем их base64 прямо в HTML
-    # (замена заглушек <img class='thumb' ...> на <img src='data:...'>)
+    # Встраиваем base64-миниатюры в JS-данные (для ZIP)
     cap = cv2.VideoCapture(video_path)
     thumbs_data = {}
-    for i, moment in enumerate(display_moments):
+    for i, moment in enumerate(moments):
         frame_idx = moment.get("frame", 0)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
         if not ret or frame is None:
             continue
         annotated = _draw_boxes(frame, moment.get("objects", []))
-        data_url = _frame_to_base64(annotated, max_width=480, quality=70)
+        data_url = _frame_to_base64(annotated, max_width=520, quality=70)
         if data_url:
             thumbs_data[i] = data_url
     cap.release()
 
-    # Встраиваем миниатюры: заменяем заглушки на реальные <img src>
-    for i, data_url in thumbs_data.items():
-        placeholder = f"<img class='thumb' alt='moment {i}' />"
-        real = f"<img class='thumb' src='{data_url}' alt='moment {i}' />"
-        html = html.replace(placeholder, real, 1)
+    # JSON-отчёт для скачивания (встраиваем как base64)
+    report_json = json.dumps({
+        "video": video_path,
+        "model": report_data.get("model", ""),
+        "hardware": report_data.get("hardware", {}),
+        "created_at": report_data.get("created_at", ""),
+        "moments_count": len(moments),
+        "moments": moments,
+    }, ensure_ascii=False, indent=2)
+    json_b64 = base64.b64encode(report_json.encode("utf-8")).decode("utf-8")
+
+    js = f"""
+    <script>
+    // Данные моментов для JS
+    var _moments = {json.dumps(moments_js_data, ensure_ascii=False)};
+    // base64-миниатюры
+    var _thumbs = {json.dumps(thumbs_data, ensure_ascii=False)};
+    // JSON-отчёт (base64) для скачивания
+    var _json_b64 = "{json_b64}";
+    // Вердикты слоя 4
+    var _verdicts = {json.dumps({str(k): v[:200] for k, v in cloud_annotations.items()}, ensure_ascii=False)};
+
+    // ── Рендер карточек ──
+    function renderCards() {{
+        var grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        _moments.forEach(function(m) {{
+            var thumb = _thumbs[m.idx] || '';
+            var verdict = _verdicts[String(m.frame)] || '';
+            var classesHtml = m.objects.map(function(o) {{
+                return '<span class="meta-class">' + escapeHtml(o.class) + '</span>';
+            }}).join('');
+            var maxConf = m.objects.length ? Math.max.apply(null, m.objects.map(function(o) {{ return o.confidence; }})) : 0;
+            var verdictHtml = verdict ? '<span class="meta-verdict" title="' + escapeHtml(verdict) + '">☁️ ' + escapeHtml(verdict.substring(0, 60)) + '…</span>' : '';
+            var card = document.createElement('div');
+            card.className = 'card';
+            card.dataset.idx = m.idx;
+            card.dataset.ts = m.timestamp;
+            card.dataset.conf = maxConf;
+            card.dataset.hasVerdict = verdict ? '1' : '0';
+            card.innerHTML =
+                '<div class="card-thumb">' +
+                (thumb ? '<img src="' + thumb + '" alt="moment ' + m.idx + '">' : '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#555">нет кадра</div>') +
+                '<input type="checkbox" class="card-check" data-idx="' + m.idx + '">' +
+                '</div>' +
+                '<div class="card-meta">' +
+                '<span class="meta-ts">🕐 ' + escapeHtml(m.timestamp) + '</span>' +
+                classesHtml +
+                '<span class="meta-conf">' + maxConf.toFixed(2) + '</span>' +
+                verdictHtml +
+                '</div>';
+            grid.appendChild(card);
+        }});
+        applyFilters();
+    }}
+
+    function escapeHtml(s) {{
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/&/g, '&' + 'amp;').replace(/</g, '&' + 'lt;').replace(/>/g, '&' + 'gt;');
+    }}
+
+    // ── Фильтры/сортировка/поиск ──
+    function applyFilters() {{
+        var search = document.getElementById('search').value.toLowerCase();
+        var sort = document.getElementById('sort').value;
+        var onlyVerdict = document.getElementById('onlyVerdict').checked;
+        var cards = Array.from(document.querySelectorAll('.card'));
+
+        // Фильтр
+        cards.forEach(function(c) {{
+            var idx = c.dataset.idx;
+            var m = _moments[idx];
+            var classesStr = m.objects.map(function(o) {{ return o.class; }}).join(' ').toLowerCase();
+            var matchSearch = !search || classesStr.includes(search);
+            var matchVerdict = !onlyVerdict || c.dataset.hasVerdict === '1';
+            c.classList.toggle('hidden', !(matchSearch && matchVerdict));
+        }});
+
+        // Сортировка
+        var visible = cards.filter(function(c) {{ return !c.classList.contains('hidden'); }});
+        var grid = document.getElementById('grid');
+        visible.sort(function(a, b) {{
+            if (sort === 'time') {{
+                return a.dataset.ts.localeCompare(b.dataset.ts);
+            }} else if (sort === 'conf') {{
+                return parseFloat(b.dataset.conf) - parseFloat(a.dataset.conf);
+            }}
+            return 0;
+        }});
+        visible.forEach(function(c) {{ grid.appendChild(c); }});
+    }}
+
+    // ── Сохранить выбранные (ZIP через JSZip) ──
+    function saveSelected() {{
+        var checked = Array.from(document.querySelectorAll('.card-check:checked')).map(function(cb) {{ return cb.dataset.idx; }});
+        if (checked.length === 0) {{
+            alert('Выберите хотя бы одну карточку');
+            return;
+        }}
+        if (typeof JSZip === 'undefined') {{
+            alert('JSZip не загружен. Проверьте интернет-соединение.');
+            return;
+        }}
+        var zip = new JSZip();
+        var folder = zip.folder('selected');
+        checked.forEach(function(idx, i) {{
+            var thumb = _thumbs[idx];
+            if (thumb) {{
+                var b64 = thumb.split(',')[1];
+                folder.file('moment_' + (i + 1) + '.jpg', b64, {{base64: true}});
+            }}
+        }});
+        // gallery.html внутри ZIP
+        var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>' +
+            'body{{background:#000;color:#E0E0E0;font-family:sans-serif;padding:20px}}' +
+            '.card{{background:#0D0D0D;border:1px solid #1E1E1E;border-radius:10px;margin-bottom:16px;overflow:hidden}}' +
+            'img{{width:100%;display:block}}.meta{{padding:10px;color:#00E5FF;font-family:monospace}}' +
+            '</style></head><body><h1 style="color:#00E5FF">Выбранные моменты</h1>';
+        checked.forEach(function(idx, i) {{
+            var m = _moments[idx];
+            var thumb = _thumbs[idx] || '';
+            var classes = m.objects.map(function(o) {{ return o.class + ' ' + o.confidence.toFixed(2); }}).join(', ');
+            html += '<div class="card">' +
+                (thumb ? '<img src="' + thumb + '">' : '') +
+                '<div class="meta">🕐 ' + m.timestamp + ' — ' + escapeHtml(classes) + '</div>' +
+                '</div>';
+        }});
+        html += '</body></html>';
+        folder.file('gallery.html', html);
+        zip.generateAsync({{type: 'blob'}}).then(function(content) {{
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(content);
+            a.download = 'selected_moments.zip';
+            a.click();
+        }});
+    }}
+
+    // ── Скачать JSON ──
+    function downloadJson() {{
+        var json = atob(_json_b64);
+        var blob = new Blob([json], {{type: 'application/json'}});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'report.json';
+        a.click();
+    }}
+
+    // ── Клик по карточке → сигнал (для PRO: прыжок плеера) ──
+    document.addEventListener('click', function(e) {{
+        if (e.target.classList.contains('card-check')) return;
+        var card = e.target.closest('.card');
+        if (card) {{
+            var idx = card.dataset.idx;
+            var m = _moments[idx];
+            // Для PRO: вызываем Python через QWebChannel (если доступен)
+            if (typeof qt !== 'undefined' && window.pyBridge) {{
+                window.pyBridge.seekToMoment(m.frame, m.timestamp);
+            }}
+            // Для Мини: просто подсвечиваем
+            card.style.borderColor = '#00FF88';
+            setTimeout(function() {{ card.style.borderColor = ''; }}, 500);
+        }}
+    }});
+
+    // Инициализация
+    document.addEventListener('DOMContentLoaded', function() {{
+        renderCards();
+        document.getElementById('search').addEventListener('input', applyFilters);
+        document.getElementById('sort').addEventListener('change', applyFilters);
+        document.getElementById('onlyVerdict').addEventListener('change', applyFilters);
+        document.getElementById('btnSave').addEventListener('click', saveSelected);
+        document.getElementById('btnJson').addEventListener('click', downloadJson);
+    }});
+    </script>
+    """
+
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MuraveiVision — Отчёт v2 — {Path(video_path).stem}</title>
+{css}
+<!-- JSZip для создания ZIP выбранных моментов -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+{header_html}
+
+<!-- Панель управления -->
+<div class="toolbar">
+    <input type="text" id="search" placeholder="🔍 Поиск по классу...">
+    <select id="sort">
+        <option value="time">Сортировка: по времени</option>
+        <option value="conf">Сортировка: по confidence</option>
+    </select>
+    <label><input type="checkbox" id="onlyVerdict"> Только с вердиктом слоя 4</label>
+</div>
+
+<!-- Сетка карточек -->
+<main>
+<div class="grid" id="grid"></div>
+</main>
+
+<!-- Плавающая панель -->
+<div class="float-panel">
+    <button class="float-btn" id="btnSave">💾 Сохранить выбранные (ZIP)</button>
+    <button class="float-btn secondary" id="btnJson">📋 Скачать JSON</button>
+</div>
+
+<div class="footer">Сгенерировано MuraveiVision v2 · {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+{js}
+</body>
+</html>
+"""
 
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(html)

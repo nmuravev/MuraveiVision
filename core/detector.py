@@ -8,13 +8,14 @@ MilitaryDetector:
 """
 import os
 import json
+import time
 import datetime
 from pathlib import Path
 
 import cv2
 
 from core import hardware, backend
-from core.classes import MILITARY_CLASSES
+from core.classes import MILITARY_CLASSES, ru
 
 
 def _normalize_model_name(name: str) -> str:
@@ -76,11 +77,13 @@ class MilitaryDetector:
           path             — путь к видеофайлу;
           drone_mode       — True => шаг кадров DRONE_FRAME_STEP (15);
           confidence       — порог уверенности детекции;
-          progress_callback(percent, timestamp_str, objects) — опциональный колбэк для GUI.
+          progress_callback(percent, timestamp_str, objects, extra_log=None,
+                            eta_sec=None) — опциональный колбэк для GUI.
 
         Возвращает:
           list[dict] — моменты вида
             {timestamp, objects:[{class, confidence, bbox}]}
+          class — на русском (через ru()).
         """
         cap = cv2.VideoCapture(path)
         if not cap.isOpened():
@@ -93,12 +96,19 @@ class MilitaryDetector:
         moments = []
         frame_idx = 0
 
+        # ── ETA: измеряем время обработки последних 10 кадров ──
+        _frame_times = []  # время обработки каждого анализируемого кадра
+        _last_time = None
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
             if frame_idx % step == 0:
+                # Замер времени начала обработки кадра (для ETA)
+                _t_start = time.time()
+
                 # Детекция
                 results = self.model.predict(
                     frame,
@@ -118,8 +128,11 @@ class MilitaryDetector:
                             cls_name = (MILITARY_CLASSES[cls_id]
                                         if 0 <= cls_id < len(MILITARY_CLASSES)
                                         else f"class_{cls_id}")
+                            # Переводим класс на русский для отображения
+                            cls_name_ru = ru(cls_name)
                             objects.append({
-                                "class": cls_name,
+                                "class": cls_name_ru,
+                                "class_en": cls_name,
                                 "confidence": round(conf, 3),
                                 "bbox": [round(v, 1) for v in xyxy],
                             })
@@ -133,12 +146,35 @@ class MilitaryDetector:
                         "objects": objects,
                     })
 
-                # Прогресс для GUI
+                # Замер времени конца обработки кадра
+                _t_end = time.time()
+                _frame_times.append(_t_end - _t_start)
+                # Оставляем только последние 10 замеров
+                if len(_frame_times) > 10:
+                    _frame_times.pop(0)
+
+                # Прогресс для GUI + ETA (каждый 50-й кадр)
                 if progress_callback is not None:
                     percent = (frame_idx / total_frames * 100) if total_frames > 0 else 0
                     ts_str = str(datetime.timedelta(seconds=int(frame_idx / fps)))
+
+                    # ETA: среднее время кадра × оставшихся кадров
+                    eta_sec = None
+                    if frame_idx % 50 == 0 and _frame_times and total_frames > 0:
+                        avg_per_frame = sum(_frame_times) / len(_frame_times)
+                        # Учитываем шаг: анализируем каждый step-й кадр
+                        remaining_analyze = max(0, (total_frames - frame_idx) // step)
+                        eta_sec = int(avg_per_frame * remaining_analyze)
+
                     try:
-                        progress_callback(min(percent, 100.0), ts_str, objects)
+                        progress_callback(min(percent, 100.0), ts_str, objects,
+                                          eta_sec=eta_sec)
+                    except TypeError:
+                        # Совместимость со старым колбэком без eta_sec
+                        try:
+                            progress_callback(min(percent, 100.0), ts_str, objects)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
 
