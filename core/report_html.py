@@ -23,14 +23,19 @@ import cv2
 from core.classes import ru
 
 
-# ── AMOLED-палитра ──
+# ── AMOLED-палитра (все используемые константы объявлены) ──
 _C_BG = "#000000"
-_C_CARD = "#0D0D0D"
+_C_PANEL = "#0D0D0D"      # панели/карточки (alias _C_CARD)
+_C_CARD = "#0D0D0D"       # карточки
 _C_BORDER = "#1E1E1E"
 _C_ACCENT = "#00E5FF"
+_C_ACCENT_HOVER = "#00B8D4"  # hover-цвет акцента
+_C_OK = "#00FF88"         # успех (alias _C_SUCCESS)
 _C_SUCCESS = "#00FF88"
+_C_ERR = "#FF3B30"        # ошибка (alias _C_ERROR)
 _C_ERROR = "#FF3B30"
 _C_TEXT = "#E0E0E0"
+_C_DIM = "#8A8A8A"        # вторичный текст (alias _C_TEXT_SEC)
 _C_TEXT_SEC = "#8A8A8A"
 
 
@@ -51,35 +56,13 @@ def _frame_to_base64(frame, max_width=520, quality=70):
 
 
 def _draw_boxes(frame, objects):
-    """Рисует рамки bbox и имена классов (на русском) на кадре."""
-    annotated = frame.copy()
-    h, w = annotated.shape[:2]
-    thickness = max(1, int(min(h, w) / 300))
+    """Рисует рамки bbox и имена классов (на русском) на кадре.
 
-    # Цвета для разных классов (BGR)
-    colors = [
-        (0x44, 0x44, 0xff), (0x44, 0xff, 0x44), (0xff, 0x44, 0x44),
-        (0x44, 0xff, 0xff), (0xff, 0x44, 0xff), (0xff, 0xff, 0x44),
-    ]
-
-    for i, obj in enumerate(objects):
-        x1, y1, x2, y2 = [int(v) for v in obj["bbox"]]
-        b, g, r = colors[i % len(colors)]
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (b, g, r), thickness)
-
-        # Подпись: класс (рус) + confidence
-        cls_display = ru(obj.get("class_en", obj.get("class", "")))
-        label = f"{cls_display} {obj['confidence']:.2f}"
-        font_scale = max(0.4, min(h, w) / 800)
-        (tw, th), _ = cv2.getTextSize(
-            label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
-        cv2.rectangle(annotated, (x1, y1 - th - 4),
-                      (x1 + tw + 4, y1), (b, g, r), -1)
-        cv2.putText(annotated, label, (x1 + 2, y1 - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_scale,
-                    (0, 0, 0), 1, cv2.LINE_AA)
-
-    return annotated
+    П.4: кириллица через PIL (cv2.putText не поддерживает русские буквы).
+    Делегирует в core.draw.draw_boxes_pil.
+    """
+    from core.draw import draw_boxes_pil
+    return draw_boxes_pil(frame, objects)
 
 
 def _esc(value) -> str:

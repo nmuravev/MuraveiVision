@@ -205,6 +205,8 @@ class ProMainWindow(QMainWindow):
         self.in_marker = 0      # in-маркер (кадр)
         self.out_marker = 0     # out-маркер (кадр)
         self.export_frames = False  # экспорт кадров (по чекбоксу)
+        # П.1: cancel_event для кнопки "⏹ Отмена"
+        self.cancel_event = threading.Event()
 
         # Мост Python ↔ JS
         self.bridge = PyBridge()
@@ -285,7 +287,7 @@ class ProMainWindow(QMainWindow):
         controls.addWidget(self.time_label)
         center_layout.addLayout(controls)
 
-        # In/out маркеры
+        # In/out маркеры (п.3: таймкоды ЧЧ:ММ:СС, а не номера кадров)
         markers = QHBoxLayout()
         in_btn = QPushButton("[I] In")
         in_btn.clicked.connect(self._on_set_in)
@@ -293,7 +295,7 @@ class ProMainWindow(QMainWindow):
         out_btn = QPushButton("[O] Out")
         out_btn.clicked.connect(self._on_set_out)
         markers.addWidget(out_btn)
-        self.markers_label = QLabel("In: 0 | Out: 0")
+        self.markers_label = QLabel("In: 00:00:00 | Out: 00:00:00")
         self.markers_label.setStyleSheet("font-family: Consolas, monospace; color: #8A8A8A;")
         markers.addWidget(self.markers_label)
         center_layout.addLayout(markers)
@@ -326,12 +328,18 @@ class ProMainWindow(QMainWindow):
 
         center_layout.addWidget(settings_group)
 
-        # Кнопка анализа + прогресс
+        # Кнопка анализа + отмена + прогресс (п.1: "⏹ Отмена")
         action_row = QHBoxLayout()
         self.analyze_btn = QPushButton("▶️ Анализ")
         self.analyze_btn.setObjectName("success")
         self.analyze_btn.clicked.connect(self._on_analyze)
         action_row.addWidget(self.analyze_btn)
+
+        # П.1: кнопка "⏹ Отмена" — ставит cancel_event
+        self.cancel_btn = QPushButton("⏹ Отмена")
+        self.cancel_btn.setStyleSheet("background:#FF3B30; color:#FFFFFF;")
+        self.cancel_btn.clicked.connect(self._on_cancel)
+        action_row.addWidget(self.cancel_btn)
 
         self.batch_btn = QPushButton("📁 Пакет")
         self.batch_btn.clicked.connect(self._on_batch)
@@ -355,13 +363,24 @@ class ProMainWindow(QMainWindow):
 
         splitter.addWidget(center)
 
-        # ── СПРАВА: QWebEngineView с HTML v2 ──
+        # ── СПРАВА: QWebEngineView с HTML v2 (п.2: тёмная заглушка до отчёта) ──
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
         right_layout.addWidget(QLabel("📄 HTML-отчёт v2"))
         self.web_view = QWebEngineView()
+        # П.2: тёмная заглушка до первого отчёта (не белый лист)
+        self.web_view.setStyleSheet("background:#000000;")
+        self.web_view.page().setBackgroundColor(Qt.black)
+        placeholder_html = (
+            "<html><body style='background:#000000; color:#8A8A8A; "
+            "font-family:Segoe UI,sans-serif; display:flex; "
+            "justify-content:center; align-items:center; height:100vh; "
+            "margin:0;'><div style='text-align:center; font-size:16px;'>"
+            "📄 Отчёта пока нет — запустите анализ</div></body></html>"
+        )
+        self.web_view.setHtml(placeholder_html)
         right_layout.addWidget(self.web_view, stretch=1)
 
         # Кнопка "Открыть HTML" (внешний браузер)
@@ -456,16 +475,22 @@ class ProMainWindow(QMainWindow):
         self.player_thread.seek(frame_idx)
 
     def _on_set_in(self):
-        """Устанавливает in-маркер."""
+        """Устанавливает in-маркер (п.3: таймкод ЧЧ:ММ:СС)."""
         self.in_marker = self.seek_slider.value()
-        self.markers_label.setText(
-            f"In: {self.in_marker} | Out: {self.out_marker}")
+        in_ts = str(datetime.timedelta(
+            seconds=int(self.in_marker / self.player_thread.fps)))
+        out_ts = str(datetime.timedelta(
+            seconds=int(self.out_marker / self.player_thread.fps)))
+        self.markers_label.setText(f"In: {in_ts} | Out: {out_ts}")
 
     def _on_set_out(self):
-        """Устанавливает out-маркер."""
+        """Устанавливает out-маркер (п.3: таймкод ЧЧ:ММ:СС)."""
         self.out_marker = self.seek_slider.value()
-        self.markers_label.setText(
-            f"In: {self.in_marker} | Out: {self.out_marker}")
+        in_ts = str(datetime.timedelta(
+            seconds=int(self.in_marker / self.player_thread.fps)))
+        out_ts = str(datetime.timedelta(
+            seconds=int(self.out_marker / self.player_thread.fps)))
+        self.markers_label.setText(f"In: {in_ts} | Out: {out_ts}")
 
     # ── Маскировка ключа ──
     def _toggle_key_visibility(self):
@@ -487,12 +512,16 @@ class ProMainWindow(QMainWindow):
 
     # ── Анализ ──
     def _on_analyze(self):
-        """Запуск одиночного анализа в отдельном потоке."""
+        """Запуск одиночного анализа в отдельном потоке (п.1: + cancel_event)."""
         if not self.video_path:
             QMessageBox.warning(self, "Ошибка", "Сначала выберите видео!")
             return
         self.analyze_btn.setEnabled(False)
+        self.batch_btn.setEnabled(False)
         self.export_frames = self.export_check.isChecked()
+
+        # П.1: сбрасываем cancel_event перед новым анализом
+        self.cancel_event.clear()
 
         # Сохраняем ключ в .env, если введён
         key = self.key_edit.text().strip()
@@ -501,8 +530,14 @@ class ProMainWindow(QMainWindow):
 
         threading.Thread(target=self._run_analysis, daemon=True).start()
 
+    def _on_cancel(self):
+        """П.1: обработчик кнопки '⏹ Отмена' — ставит cancel_event."""
+        self.cancel_event.set()
+        self._log("⏹ Отмена анализа...")
+
     def _run_analysis(self):
-        """Анализ видео в отдельном потоке."""
+        """Анализ видео в отдельном потоке (п.1: cancel_event)."""
+        cancelled = False
         try:
             self.progress.setValue(0)
             self._log(f"▶️ Запуск анализа: {os.path.basename(self.video_path)}")
@@ -512,10 +547,18 @@ class ProMainWindow(QMainWindow):
                 drone_mode=self.drone_check.isChecked(),
                 confidence=0.35,
                 progress_callback=self._on_progress,
+                cancel_event=self.cancel_event,  # п.1
             )
 
+            # П.1: проверяем, был ли отменён
+            if self.cancel_event.is_set():
+                cancelled = True
+                self._log("⏹ Отменено")
+                self.progress_label.setText("⏹ Отменено")
+                return
+
             self.last_moments = results
-            self._log(f"✅ Найдено моментов: {len(results)}")
+            self._log(f"✅ Готово: {len(results)} моментов")
 
             # Облачная проверка (с прокси-политикой)
             cloud_annotations = {}
@@ -555,7 +598,14 @@ class ProMainWindow(QMainWindow):
         except Exception as e:
             self._log(f"❌ Ошибка: {e}")
         finally:
-            QTimer.singleShot(0, lambda: self.analyze_btn.setEnabled(True))
+            # П.1: после завершения/отмены — кнопки активны
+            def _restore():
+                self.analyze_btn.setEnabled(True)
+                self.batch_btn.setEnabled(True)
+                if not cancelled:
+                    self.progress_label.setText(
+                        f"✅ Готово: {len(self.last_moments)} моментов")
+            QTimer.singleShot(0, _restore)
 
     def _on_progress(self, percent, timestamp_str, objects, extra_log=None, eta_sec=None):
         """Колбэк прогресса из детектора."""
@@ -751,16 +801,25 @@ class ProMainWindow(QMainWindow):
 
     # ── Открыть HTML во внешнем браузере ──
     def _on_open_html_external(self):
-        """Открывает последний HTML во внешнем браузере."""
-        import webbrowser
+        """Открывает последний HTML во внешнем браузере.
+
+        П.8: webbrowser НЕ используем (GIL-краш при загруженном PySide6) —
+        вместо него os.startfile.
+        """
         if self.last_html_path and os.path.exists(self.last_html_path):
-            webbrowser.open(self.last_html_path)
+            try:
+                os.startfile(os.path.abspath(self.last_html_path))
+            except Exception as e:
+                QMessageBox.warning(self, "Браузер", f"Не удалось открыть:\n{e}")
         else:
             # Диалог выбора
             path, _ = QFileDialog.getOpenFileName(
                 self, "Выберите HTML", "output", "HTML (*.html)")
             if path:
-                webbrowser.open(path)
+                try:
+                    os.startfile(os.path.abspath(path))
+                except Exception as e:
+                    QMessageBox.warning(self, "Браузер", f"Не удалось открыть:\n{e}")
 
     def closeEvent(self, event):
         """Останавливает поток плеера при закрытии."""

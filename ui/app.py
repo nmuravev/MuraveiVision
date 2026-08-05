@@ -4,12 +4,22 @@ import json
 import glob
 import threading
 import datetime
-import webbrowser
 
 import cv2
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image
+
+
+def open_in_browser(path):
+    """Открывает файл в браузере/программе по умолчанию через os.startfile.
+
+    Модуль webbrowser НЕ использовать — фатальный краш GIL при загруженном PySide6.
+    """
+    try:
+        os.startfile(os.path.abspath(path))
+    except Exception as e:
+        messagebox.showwarning("Браузер", f"Не удалось открыть файл:\n{e}")
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -369,10 +379,10 @@ def launch():
             except Exception as e:
                 app.after(0, lambda err=e: log_msg(f"⚠️ HTML-отчёт не создан: {err}"))
 
-            # Вместо галереи (п.А1) — открываем HTML-отчёт в браузере
-            if results and last_html_path["value"]:
-                app.after(0, lambda p=last_html_path["value"]: webbrowser.open(p))
-            else:
+            # Вместо галереи (п.А1) — открываем HTML-отчёт в браузере (БАГ 4: убрано ложное "Ничего не найдено")
+            if last_html_path["value"]:
+                app.after(0, lambda p=last_html_path["value"]: open_in_browser(p))
+            elif not results:
                 app.after(0, lambda: log_msg("Ничего не найдено"))
 
             app.after(
@@ -719,9 +729,15 @@ def launch():
         start_btn.configure(state="disabled", text="⏳ Пакет...")
         threading.Thread(target=run_batch_analysis, args=(folder,), daemon=True).start()
 
-    # ── Кнопка "📂 Открыть отчёт" (п.2) ──
+    # ── Кнопка "📂 Открыть отчёт" (п.2, БАГ 3) ──
     def open_report_click():
-        """Открывает JSON-отчёт из output/ и загружает видео + моменты в галерею."""
+        """Открывает JSON-отчёт из output/, генерирует HTML и открывает в браузере.
+
+        Миниатюры берутся:
+          1) из папки output/<video_stem>_frames/ по совпадению таймкода;
+          2) если папки нет — из видео (если видеофайл существует);
+          3) если нет ни того ни другого — карточки без миниатюр.
+        """
         # Диалог выбора JSON из output/
         initial = os.path.abspath("output") if os.path.isdir("output") else os.getcwd()
         report_file = filedialog.askopenfilename(
@@ -746,19 +762,7 @@ def launch():
             messagebox.showinfo("Отчёт", "В отчёте нет моментов")
             return
 
-        # Проверяем существование видеофайла
-        if not video_path or not os.path.exists(video_path):
-            log_msg(f"⚠️ Видеофайл не найден: {video_path}")
-            log_msg(f"   Отчёт: {report_file}")
-            messagebox.showwarning(
-                "Видео не найдено",
-                f"Видеофайл не найден:\n{video_path}\n\n"
-                f"Отчёт: {report_file}\n\n"
-                f"Галерея недоступна без видео.",
-            )
-            return
-
-        # Заполняем переменные (для возможных будущих действий)
+        # Заполняем переменные
         last_video_path["value"] = video_path
         last_moments["value"] = moments
         last_report_path["value"] = report_file
@@ -767,7 +771,17 @@ def launch():
         log_msg(f"   Видео: {video_path}")
         log_msg(f"   Моментов: {len(moments)}")
 
-        # Генерируем HTML из загруженного отчёта и открываем в браузере (п.А1)
+        # ── БАГ 3: подготовка миниатюр ──
+        # 1) Пытаемся взять из папки output/<video_stem>_frames/ по совпадению таймкода
+        video_stem = os.path.splitext(os.path.basename(video_path))[0] if video_path else ""
+        frames_dir = os.path.join("output", f"{video_stem}_frames") if video_stem else None
+        frames_available = frames_dir and os.path.isdir(frames_dir)
+        video_available = video_path and os.path.exists(video_path)
+
+        if not frames_available and not video_available:
+            log_msg("⚠️ Нет ни папки кадров, ни видео — карточки будут без миниатюр")
+
+        # Генерируем HTML из загруженного отчёта (БАГ 3: без ошибок в логе)
         try:
             from core.report_html import generate_html
             report_data = {
@@ -776,33 +790,65 @@ def launch():
                 "created_at": data.get("created_at", ""),
                 "moments_count": len(moments),
             }
-            html_path = generate_html(video_path, moments, report_data=report_data)
+            # Если видео недоступно — передаём пустой путь, generate_html создаст карточки без миниатюр
+            html_video_path = video_path if video_available else ""
+            html_path = generate_html(html_video_path, moments, report_data=report_data)
             last_html_path["value"] = html_path
-            webbrowser.open(html_path)
+            open_in_browser(html_path)
             log_msg(f"📄 HTML-отчёт: {html_path}")
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось создать HTML:\n{e}")
+            log_msg(f"⚠️ Не удалось создать HTML: {e}")
+            messagebox.showwarning("HTML", f"Не удалось создать HTML:\n{e}\n\nОтчёт загружен, путь: {report_file}")
 
-    # ── Кнопка "📄 Открыть HTML" (п.3) ──
+    # ── Кнопка "📄 Открыть HTML" (п.3, БАГ 2) ──
     def open_html_click():
-        """Открывает последний HTML-отчёт в браузере."""
+        """Открывает последний HTML-отчёт (.html) в браузере.
+
+        Если .html нет — генерирует HTML из последнего JSON (last_report_path).
+        НИКОГДА не открывает .json как HTML.
+        Если нет ни того ни другого — messagebox "Отчётов пока нет".
+        """
         html_path = last_html_path["value"]
-        if not html_path or not os.path.exists(html_path):
-            # Предлагаем выбрать HTML из output/
-            initial = os.path.abspath("output") if os.path.isdir("output") else os.getcwd()
-            chosen = filedialog.askopenfilename(
-                title="Выберите HTML-отчёт",
-                initialdir=initial,
-                filetypes=[("HTML-отчёты", "*.html"), ("Все файлы", "*.*")],
-            )
-            if not chosen:
-                return
-            html_path = chosen
-        try:
-            webbrowser.open(html_path)
-            log_msg(f"📄 Открыт HTML: {html_path}")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось открыть HTML:\n{e}")
+
+        # Если HTML есть и существует — открываем
+        if html_path and os.path.exists(html_path):
+            try:
+                open_in_browser(html_path)
+                log_msg(f"📄 Открыт HTML: {html_path}")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось открыть HTML:\n{e}")
+            return
+
+        # HTML нет — пытаемся сгенерировать из последнего JSON (БАГ 2)
+        json_path = last_report_path["value"]
+        if json_path and os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                video_path = data.get("video", "")
+                moments = data.get("moments", [])
+                if not moments:
+                    messagebox.showinfo("Отчётов пока нет", "В отчёте нет моментов")
+                    return
+                from core.report_html import generate_html
+                report_data = {
+                    "model": data.get("model", ""),
+                    "hardware": data.get("hardware", {}),
+                    "created_at": data.get("created_at", ""),
+                    "moments_count": len(moments),
+                }
+                # Если видео недоступно — карточки без миниатюр
+                html_video_path = video_path if os.path.exists(video_path) else ""
+                html_path = generate_html(html_video_path, moments, report_data=report_data)
+                last_html_path["value"] = html_path
+                open_in_browser(html_path)
+                log_msg(f"📄 HTML-отчёт (из JSON): {html_path}")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось создать HTML из отчёта:\n{e}")
+            return
+
+        # Нет ни HTML, ни JSON
+        messagebox.showinfo("Отчётов пока нет", "Сначала выполните анализ или откройте JSON-отчёт.")
 
     # ── Фрейм с кнопками (п.А2): [📄 Файл][📁 Папка][📂 Открыть отчёт]
     #    [📄 Открыть HTML][▶️ Анализ] ──

@@ -1,6 +1,12 @@
-"""Точка входа MuraveiVision — лаунчер выбора версии (Мини / PRO)."""
+"""Точка входа MuraveiVision — лаунчер выбора версии (Мини / PRO).
+
+Важно: PySide6 НЕ импортируется на верхнем уровне — иначе он загружается
+в процесс Мини-версии и вызывает фатальный краш GIL при webbrowser.open().
+Проверка PRO идёт через importlib.util.find_spec (без импорта).
+"""
 import sys
 import os
+import importlib.util
 import traceback
 import datetime
 from pathlib import Path
@@ -14,16 +20,18 @@ load_dotenv()
 
 
 def _check_qt_available():
-    """Проверяет доступность PySide6 и PySide6WebEngine для PRO-версии."""
+    """Проверяет доступность PySide6 и PySide6-WebEngine БЕЗ импорта.
+
+    Использует importlib.util.find_spec — не загружает PySide6 в процесс,
+    чтобы Мини-версия не крашилась (GIL) при открытии браузера.
+
+    Возвращает список отсутствующих пакетов с точными именами для pip install.
+    """
     missing = []
-    try:
-        import PySide6  # noqa: F401
-    except ImportError:
+    if importlib.util.find_spec("PySide6") is None:
         missing.append("PySide6")
-    try:
-        import PySide6.QtWebEngineWidgets  # noqa: F401
-    except ImportError:
-        missing.append("PySide6WebEngineWidgets")
+    if importlib.util.find_spec("PySide6.QtWebEngineWidgets") is None:
+        missing.append("PySide6-WebEngine")
     return missing
 
 
@@ -73,7 +81,11 @@ def launch_mini():
 
 
 def launch_pro():
-    """Запускает PRO-версию (PySide6)."""
+    """Запускает PRO-версию (PySide6).
+
+    Импорт ui.ide_app — ТОЛЬКО здесь (не на верхнем уровне),
+    чтобы PySide6 не загружался в процесс Мини-версии.
+    """
     from ui.ide_app import launch as launch_ide
     launch_ide()
 
@@ -124,11 +136,15 @@ def main():
     )
     pro_btn.pack(pady=10)
 
-    # Причина блокировки PRO
+    # Причина блокировки PRO (БАГ 5: точная причина + подсказка pip install)
     if qt_missing:
         reason = "PRO недоступна: не установлены " + ", ".join(qt_missing)
         tk.Label(root, text=reason, font=("Segoe UI", 10),
-                 bg="#000000", fg="#FF3B30", wraplength=380).pack(pady=5)
+                 bg="#000000", fg="#FF3B30", wraplength=380).pack(pady=2)
+        # Подсказка по установке
+        pip_hint = "pip install " + " ".join(qt_missing)
+        tk.Label(root, text=f"Установите: {pip_hint}", font=("Consolas", 10),
+                 bg="#000000", fg="#00E5FF", wraplength=380).pack(pady=2)
 
     def _on_mini():
         root.destroy()

@@ -59,6 +59,16 @@ class MilitaryDetector:
         # Путь к файлу модели
         self.model_path = str(Path("models") / self.model_name)
 
+        # финтюнутая модель предпочтительна; откат:
+        # USE_FINETUNED=0 в .env  (использовать оригинал)
+        # или удалить файл -finetuned.onnx
+        ft = Path("models") / self.model_name.replace(
+            ".onnx", "-finetuned.onnx")
+        if ft.exists() and os.getenv("USE_FINETUNED", "1") == "1":
+            self.model_name = ft.name
+            self.model_path = str(ft)
+            print(f"🎓 Используется дообученная модель: {ft.name}")
+
         # Загружаем модель (ultralytics сам подхватит ONNX Runtime)
         # Импорт внутри метода, чтобы не тянуть тяжёлый ultralytics при импорте модуля
         from ultralytics import YOLO
@@ -70,7 +80,8 @@ class MilitaryDetector:
         self.drone_frame_step = int(os.getenv("DRONE_FRAME_STEP", "15"))
 
     def analyze_video(self, path, drone_mode=False, confidence=0.25,
-                      progress_callback=None):
+                      progress_callback=None, cancel_event=None,
+                      start_sec=None, end_sec=None):
         """Анализирует видео и возвращает список моментов с находками.
 
         Аргументы:
@@ -78,7 +89,12 @@ class MilitaryDetector:
           drone_mode       — True => шаг кадров DRONE_FRAME_STEP (15);
           confidence       — порог уверенности детекции;
           progress_callback(percent, timestamp_str, objects, extra_log=None,
-                            eta_sec=None) — опциональный колбэк для GUI.
+                            eta_sec=None) — опциональный колбэк для GUI;
+          cancel_event     — опциональный threading.Event для отмены анализа
+                             (проверяется в цикле кадров; старые вызовы не
+                             ломаются — по умолчанию None).
+          start_sec, end_sec — опциональные границы анализа в секундах
+                               (для PRO: in/out разметка).
 
         Возвращает:
           list[dict] — моменты вида
@@ -93,19 +109,33 @@ class MilitaryDetector:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         step = self.drone_frame_step if drone_mode else self.frame_step
 
+        # Если заданы границы in/out — пересчитываем в кадры
+        start_frame = int(start_sec * fps) if start_sec is not None else 0
+        end_frame = int(end_sec * fps) if end_sec is not None else total_frames
+
+        # Перематываем на start_frame если нужно
+        if start_frame > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
         moments = []
-        frame_idx = 0
+        frame_idx = start_frame
+        frames_analyzed = 0
+        total_analyze = max(1, (end_frame - start_frame) // step)
 
         # ── ETA: измеряем время обработки последних 10 кадров ──
         _frame_times = []  # время обработки каждого анализируемого кадра
         _last_time = None
 
-        while True:
+        while frame_idx < end_frame:
+            # Проверка отмены (п.1: кнопка "⏹ Отмена")
+            if cancel_event is not None and cancel_event.is_set():
+                break
+
             ret, frame = cap.read()
             if not ret:
                 break
 
-            if frame_idx % step == 0:
+            if frames_analyzed % step == 0:
                 # Замер времени начала обработки кадра (для ETA)
                 _t_start = time.time()
 
@@ -155,15 +185,14 @@ class MilitaryDetector:
 
                 # Прогресс для GUI + ETA (каждый 50-й кадр)
                 if progress_callback is not None:
-                    percent = (frame_idx / total_frames * 100) if total_frames > 0 else 0
+                    percent = (frames_analyzed / total_analyze * 100) if total_analyze > 0 else 0
                     ts_str = str(datetime.timedelta(seconds=int(frame_idx / fps)))
 
                     # ETA: среднее время кадра × оставшихся кадров
                     eta_sec = None
-                    if frame_idx % 50 == 0 and _frame_times and total_frames > 0:
+                    if frames_analyzed % 50 == 0 and _frame_times and total_analyze > 0:
                         avg_per_frame = sum(_frame_times) / len(_frame_times)
-                        # Учитываем шаг: анализируем каждый step-й кадр
-                        remaining_analyze = max(0, (total_frames - frame_idx) // step)
+                        remaining_analyze = max(0, total_analyze - frames_analyzed)
                         eta_sec = int(avg_per_frame * remaining_analyze)
 
                     try:
@@ -179,6 +208,7 @@ class MilitaryDetector:
                         pass
 
             frame_idx += 1
+            frames_analyzed += 1
 
         cap.release()
 
@@ -240,33 +270,13 @@ class MilitaryDetector:
         return str(frames_dir)
 
     def _draw_boxes(self, frame, objects):
-        """Рисует рамки bbox и имена классов на кадре (для экспорта)."""
-        annotated = frame.copy()
-        h, w = annotated.shape[:2]
-        thickness = max(1, int(min(h, w) / 300))
+        """Рисует рамки bbox и имена классов на кадре (для экспорта).
 
-        # Цвета для разных классов (BGR)
-        colors = [
-            (0x44, 0x44, 0xff), (0x44, 0xff, 0x44), (0xff, 0x44, 0x44),
-            (0x44, 0xff, 0xff), (0xff, 0x44, 0xff), (0xff, 0xff, 0x44),
-        ]
-
-        for i, obj in enumerate(objects):
-            x1, y1, x2, y2 = [int(v) for v in obj["bbox"]]
-            b, g, r = colors[i % len(colors)]
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), (b, g, r), thickness)
-
-            label = f"{obj['class']} {obj['confidence']:.2f}"
-            font_scale = max(0.4, min(h, w) / 800)
-            (tw, th), _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
-            cv2.rectangle(annotated, (x1, y1 - th - 4),
-                          (x1 + tw + 4, y1), (b, g, r), -1)
-            cv2.putText(annotated, label, (x1 + 2, y1 - 2),
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale,
-                        (0, 0, 0), 1, cv2.LINE_AA)
-
-        return annotated
+        П.4: кириллица через PIL (cv2.putText не поддерживает русские буквы).
+        Делегирует в core.draw.draw_boxes_pil.
+        """
+        from core.draw import draw_boxes_pil
+        return draw_boxes_pil(frame, objects)
 
     @staticmethod
     def _sanitize_filename(name: str) -> str:
