@@ -16,6 +16,7 @@ import cv2
 
 from core import hardware, backend
 from core.classes import MILITARY_CLASSES, ru
+from core.paths import models_dir, output_dir
 
 
 def _normalize_model_name(name: str) -> str:
@@ -52,17 +53,22 @@ class MilitaryDetector:
         self.gpu = self.hw.get("gpu")
         self.cpu = self.hw.get("cpu", {})
 
-        raw_name = backend.choose_model(self.gpu)
-        self.model_name = _normalize_model_name(raw_name)
-        self.providers = backend.choose_providers(self.gpu)
-
-        # Путь к файлу модели
-        self.model_path = str(Path("models") / self.model_name)
+        # MODEL_OVERRIDE из .env: если задано и файл существует — используем его
+        override = os.getenv("MODEL_OVERRIDE", "").strip()
+        if override and (models_dir() / override).exists():
+            self.model_name = override
+            self.providers = backend.choose_providers(self.gpu)
+            self.model_path = str(models_dir() / override)
+        else:
+            raw_name = backend.choose_model(self.gpu)
+            self.model_name = _normalize_model_name(raw_name)
+            self.providers = backend.choose_providers(self.gpu)
+            self.model_path = str(models_dir() / self.model_name)
 
         # финтюнутая модель предпочтительна; откат:
         # USE_FINETUNED=0 в .env  (использовать оригинал)
         # или удалить файл -finetuned.onnx
-        ft = Path("models") / self.model_name.replace(
+        ft = models_dir() / self.model_name.replace(
             ".onnx", "-finetuned.onnx")
         if ft.exists() and os.getenv("USE_FINETUNED", "1") == "1":
             self.model_name = ft.name
@@ -234,7 +240,7 @@ class MilitaryDetector:
 
         # Папка: output/<имя_видео>_frames/
         video_stem = Path(video_path).stem
-        frames_dir = Path("output") / f"{video_stem}_frames"
+        frames_dir = output_dir() / f"{video_stem}_frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
 
         cap = cv2.VideoCapture(video_path)
@@ -316,7 +322,7 @@ class MilitaryDetector:
 
     def _save_report(self, video_path, moments, frames_dir=None):
         """Сохраняет JSON-отчёт в папку output/."""
-        out_dir = Path("output")
+        out_dir = output_dir()
         out_dir.mkdir(parents=True, exist_ok=True)
 
         video_stem = Path(video_path).stem

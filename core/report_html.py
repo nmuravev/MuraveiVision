@@ -21,6 +21,7 @@ from pathlib import Path
 import cv2
 
 from core.classes import ru
+from core.paths import output_dir as _output_dir
 
 
 # ── AMOLED-палитра (все используемые константы объявлены) ──
@@ -126,7 +127,7 @@ def _build_header(video_path, report_data, settings):
 
 
 def generate_html(video_path, moments, report_data=None, settings=None,
-                  cloud_annotations=None, output_dir="output"):
+                  cloud_annotations=None, output_dir=None):
     """Генерирует самодостаточный HTML-отчёт v2.
 
     Аргументы:
@@ -143,7 +144,7 @@ def generate_html(video_path, moments, report_data=None, settings=None,
     report_data = report_data or {}
     cloud_annotations = cloud_annotations or {}
 
-    out_dir = Path(output_dir)
+    out_dir = Path(output_dir) if output_dir else _output_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     video_stem = Path(video_path).stem

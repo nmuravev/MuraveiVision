@@ -16,7 +16,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Portable-совместимая загрузка .env
+from core.paths import app_root, env_path
+
+load_dotenv(env_path())
+# Fallback: пробуем обычную загрузку (текущая папка)
+load_dotenv(override=False)
 
 
 def _check_qt_available():
@@ -74,6 +79,73 @@ def _save_diagnostics(exc_info):
     return str(out_path)
 
 
+def run_selftest():
+    """Режим самопроверки (без GUI): импорт, hardware, модели, загрузка YOLO.
+
+    Использование: python main.py --selftest
+    Возвращает exit 0 при успехе, exit 1 при ошибке (с traceback).
+    """
+    print("🧪 MuraveiVision Self-Test")
+    print("=" * 50)
+
+    # 1. Импорт ключевых модулей
+    print("1. Импорт модулей...")
+    try:
+        from core import hardware, backend
+        from core.paths import models_dir
+        print("   ✅ core.hardware, core.backend, core.paths")
+    except Exception:
+        print("   ❌ Ошибка импорта core.*")
+        traceback.print_exc()
+        sys.exit(1)
+
+    # 2. Определение железа
+    print("2. Определение железа...")
+    try:
+        hw = hardware.detect_all()
+        gpu = hw.get("gpu")
+        if gpu:
+            print(f"   ✅ GPU: {gpu.get('name', '?')} ({gpu.get('vram_mb', 0)} MB)")
+        else:
+            cpu = hw.get("cpu", {})
+            print(f"   ✅ CPU-only: {cpu.get('brand', '?')}")
+    except Exception:
+        print("   ❌ Ошибка hardware.detect_all()")
+        traceback.print_exc()
+        sys.exit(1)
+
+    # 3. Список моделей
+    print("3. Доступные модели...")
+    try:
+        mdir = models_dir()
+        onnx_files = sorted([f.name for f in mdir.glob("*.onnx")])
+        if not onnx_files:
+            print(f"   ⚠️ Нет ONNX-моделей в {mdir}")
+        else:
+            for f in onnx_files:
+                print(f"   📦 {f}")
+    except Exception:
+        print("   ❌ Ошибка чтения папки models/")
+        traceback.print_exc()
+        sys.exit(1)
+
+    # 4. Загрузка выбранной модели
+    print("4. Загрузка модели YOLO...")
+    try:
+        from core.detector import MilitaryDetector
+        det = MilitaryDetector()
+        print(f"   ✅ Модель: {det.model_name}")
+        print(f"   ✅ Провайдеры: {', '.join(det.providers)}")
+    except Exception:
+        print("   ❌ Ошибка загрузки модели")
+        traceback.print_exc()
+        sys.exit(1)
+
+    print("=" * 50)
+    print("✅ SELFTEST OK")
+    sys.exit(0)
+
+
 def launch_mini():
     """Запускает Мини-версию (CustomTkinter)."""
     from ui.app import launch
@@ -92,8 +164,16 @@ def launch_pro():
 
 def main():
     """Лаунчер: окно выбора [🟢 Мини][🟣 PRO]."""
+    # Режим самопроверки
+    if "--selftest" in sys.argv:
+        run_selftest()
+        return
+
     # Проверяем Qt
     qt_missing = _check_qt_available()
+
+    # Portable-сборка: PRO недоступна (PySide6 исключён из spec)
+    is_frozen = getattr(sys, "frozen", False)
 
     # Если нет PySide6 — показываем простой диалог выбора через tkinter
     # (чтобы не зависеть от Qt для лаунчера)
@@ -107,7 +187,7 @@ def main():
 
     root = tk.Tk()
     root.title("🎯 MuraveiVision — Выбор версии")
-    root.geometry("420x320")
+    root.geometry("420x340")
     root.configure(bg="#000000")
 
     # Заголовок
@@ -126,7 +206,17 @@ def main():
     mini_btn.pack(pady=10)
 
     # Кнопка PRO
-    pro_state = "normal" if not qt_missing else "disabled"
+    # В portable-сборке (frozen) PRO недоступна
+    if is_frozen:
+        pro_state = "disabled"
+        pro_reason = "PRO недоступна в портативной версии"
+    elif qt_missing:
+        pro_state = "disabled"
+        pro_reason = "PRO недоступна: не установлены " + ", ".join(qt_missing)
+    else:
+        pro_state = "normal"
+        pro_reason = None
+
     pro_btn = tk.Button(
         root, text="🟣 PRO (PySide6 + WebEngine)", font=("Segoe UI", 12, "bold"),
         bg="#9D4EDD", fg="#FFFFFF", activebackground="#7B2CBF",
@@ -136,15 +226,14 @@ def main():
     )
     pro_btn.pack(pady=10)
 
-    # Причина блокировки PRO (БАГ 5: точная причина + подсказка pip install)
-    if qt_missing:
-        reason = "PRO недоступна: не установлены " + ", ".join(qt_missing)
-        tk.Label(root, text=reason, font=("Segoe UI", 10),
+    # Причина блокировки PRO
+    if pro_reason:
+        tk.Label(root, text=pro_reason, font=("Segoe UI", 10),
                  bg="#000000", fg="#FF3B30", wraplength=380).pack(pady=2)
-        # Подсказка по установке
-        pip_hint = "pip install " + " ".join(qt_missing)
-        tk.Label(root, text=f"Установите: {pip_hint}", font=("Consolas", 10),
-                 bg="#000000", fg="#00E5FF", wraplength=380).pack(pady=2)
+        if qt_missing and not is_frozen:
+            pip_hint = "pip install " + " ".join(qt_missing)
+            tk.Label(root, text=f"Установите: {pip_hint}", font=("Consolas", 10),
+                     bg="#000000", fg="#00E5FF", wraplength=380).pack(pady=2)
 
     def _on_mini():
         root.destroy()

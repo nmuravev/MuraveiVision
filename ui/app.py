@@ -9,6 +9,7 @@ import cv2
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 from PIL import Image
+from core.paths import app_root, models_dir, output_dir
 
 
 def open_in_browser(path):
@@ -72,6 +73,114 @@ def launch():
         font=ctk.CTkFont(size=14, weight="bold"),
         text_color=_C_TEXT_SEC,
     ).pack(pady=5)
+
+
+    # ── Панель выбора модели (п.2: combobox + добавить) ──
+    model_frame = ctk.CTkFrame(app, fg_color=_C_CARD, border_color=_C_BORDER, border_width=1)
+    model_frame.pack(padx=20, pady=(0, 5), fill="x")
+
+    ctk.CTkLabel(
+        model_frame, text="🤖 Модель:",
+        font=ctk.CTkFont(size=13, weight="bold"), text_color=_C_TEXT_SEC,
+    ).pack(side="left", padx=(10, 5), pady=8)
+
+    # Список моделей из models/
+    def list_models():
+        mdir = models_dir()
+        if not mdir.exists():
+            return []
+        return sorted([f.name for f in mdir.glob("*.onnx")])
+
+    model_var = ctk.StringVar(value=detector.model_name)
+    model_combo = ctk.CTkComboBox(
+        model_frame, variable=model_var, values=list_models(),
+        width=350, fg_color="#000000", border_color=_C_BORDER,
+        button_color=_C_ACCENT, button_hover_color=_C_ACCENT_HOVER,
+        text_color=_C_TEXT, dropdown_fg_color=_C_CARD,
+    )
+    model_combo.pack(side="left", padx=5, pady=8)
+
+    # Кнопка "➕ Добавить модель"
+    def add_model():
+        """askopenfilename(.onnx) → копировать в models/ → обновить список → выбрать."""
+        src = filedialog.askopenfilename(
+            title="Выберите ONNX-модель",
+            filetypes=[("ONNX-модели", "*.onnx"), ("Все файлы", "*.*")],
+        )
+        if not src:
+            return
+        import shutil
+        dst = models_dir() / os.path.basename(src)
+        try:
+            shutil.copy2(src, dst)
+            log_msg(f"📥 Модель скопирована: {dst.name}")
+        except Exception as e:
+            messagebox.showerror("Ошибка", "Не удалось скопировать модель: " + str(e))
+            return
+        # Обновляем список
+        model_combo.configure(values=list_models())
+        # Выбираем добавленную
+        model_var.set(dst.name)
+        on_model_change(dst.name)
+
+    ctk.CTkButton(
+        model_frame, text="➕ Добавить модель", command=add_model,
+        fg_color=_C_ACCENT, hover_color=_C_ACCENT_HOVER, text_color="#000000",
+        width=180, height=32,
+    ).pack(side="left", padx=5, pady=8)
+
+    # ── Запись MODEL_OVERRIDE в .env ──
+    def write_model_override(model_name):
+        """Записывает MODEL_OVERRIDE=<имя> в .env, не трогая остальные строки."""
+        env_path = str(app_root() / ".env")
+        lines = []
+        found = False
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as fenv:
+                lines = fenv.readlines()
+        for i, line in enumerate(lines):
+            if line.startswith("MODEL_OVERRIDE="):
+                lines[i] = "MODEL_OVERRIDE=" + model_name + "\n"
+                found = True
+                break
+        if not found:
+            lines.append("MODEL_OVERRIDE=" + model_name + "\n")
+        with open(env_path, "w", encoding="utf-8") as fenv:
+            fenv.writelines(lines)
+        os.environ["MODEL_OVERRIDE"] = model_name
+
+    # ── Смена модели: пересоздать детектор в фоновом потоке ──
+    def on_model_change(new_name):
+        """Пересоздаёт детектор с выбранной моделью в фоновом потоке."""
+        if not new_name:
+            return
+        # Проверяем, что файл существует
+        if not (models_dir() / new_name).exists():
+            log_msg(f"⚠️ Модель не найдена: {new_name}")
+            return
+        # Записываем в .env
+        write_model_override(new_name)
+        log_msg("🔄 Загрузка модели...")
+        start_btn.configure(state="disabled", text="🔄 Загрузка модели...")
+
+        def _reload():
+            nonlocal detector
+            try:
+                os.environ["MODEL_OVERRIDE"] = new_name
+                from core.detector import MilitaryDetector
+                new_det = MilitaryDetector()
+                detector = new_det
+                app.after(0, lambda: log_msg(f"✅ Модель: {detector.model_name}"))
+                app.after(0, lambda: log_msg(f"🖥️ Провайдеры: {', '.join(detector.providers)}"))
+            except Exception as e:
+                app.after(0, lambda err=e: log_msg(f"❌ Ошибка загрузки модели: {err}"))
+            finally:
+                app.after(0, lambda: start_btn.configure(state="normal", text="🚀 Начать анализ"))
+
+        threading.Thread(target=_reload, daemon=True).start()
+
+    # Привязываем смену модели в combobox
+    model_combo.configure(command=on_model_change)
 
     # Фрейм управления
     ctrl = ctk.CTkFrame(app, fg_color=_C_BG, border_color=_C_BORDER, border_width=1)
@@ -148,7 +257,7 @@ def launch():
     def save_api_key():
         """Сохраняет/обновляет NVIDIA_API_KEY в .env, не трогая остальные строки."""
         key = api_key_var.get().strip()
-        env_path = ".env"
+        env_path = str(app_root() / ".env")
         lines = []
         found = False
         if os.path.exists(env_path):
@@ -531,8 +640,8 @@ def launch():
             # Сохраняем batch_summary_<ts>.json
             try:
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                summary_path = os.path.join("output", f"batch_summary_{ts}.json")
-                os.makedirs("output", exist_ok=True)
+                summary_path = str(output_dir() / f"batch_summary_{ts}.json")
+                output_dir().mkdir(parents=True, exist_ok=True)
                 with open(summary_path, "w", encoding="utf-8") as f:
                     json.dump({
                         "folder": folder,
@@ -583,7 +692,7 @@ def launch():
         import cv2 as _cv2
 
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_file = os.path.join("output", f"batch_report_{ts}.html")
+        out_file = str(output_dir() / f"batch_report_{ts}.html")
 
         # Собираем все моменты с пометкой источника
         all_moments = []
@@ -739,7 +848,7 @@ def launch():
           3) если нет ни того ни другого — карточки без миниатюр.
         """
         # Диалог выбора JSON из output/
-        initial = os.path.abspath("output") if os.path.isdir("output") else os.getcwd()
+        initial = str(output_dir()) if output_dir().exists() else os.getcwd()
         report_file = filedialog.askopenfilename(
             title="Выберите JSON-отчёт",
             initialdir=initial,
@@ -774,7 +883,7 @@ def launch():
         # ── БАГ 3: подготовка миниатюр ──
         # 1) Пытаемся взять из папки output/<video_stem>_frames/ по совпадению таймкода
         video_stem = os.path.splitext(os.path.basename(video_path))[0] if video_path else ""
-        frames_dir = os.path.join("output", f"{video_stem}_frames") if video_stem else None
+        frames_dir = str(output_dir() / f"{video_stem}_frames") if video_stem else None
         frames_available = frames_dir and os.path.isdir(frames_dir)
         video_available = video_path and os.path.exists(video_path)
 
