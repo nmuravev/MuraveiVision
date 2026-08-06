@@ -5,10 +5,7 @@
 ЗАПУСК
 ─────
   Дважды кликните на MuraveiVision.exe.
-  Появится лаунчер с выбором версии:
-    🟢 Мини (CustomTkinter) — доступна всегда
-    🟣 PRO (PySide6 + WebEngine) — недоступна в портативной версии
-        (PySide6 исключён из сборки для уменьшения размера)
+  Приложение откроется сразу — без окна выбора.
 
   Для проверки сборки без GUI:
     MuraveiVision.exe --selftest
@@ -78,14 +75,11 @@ HTML-ОТЧЁТЫ
   MuraveiVision.exe --selftest
 
   Ожидаемый вывод:
-    🔄 SELFTEST: импорт модулей OK
-    🔄 SELFTEST: железо — CPU: ..., GPU: ...
-    🔄 SELFTEST: моделей в models/ — N
-       • model1.onnx
-       • model2.onnx
-    🔄 SELFTEST: загрузка модели YOLO...
-    🔄 SELFTEST: модель загружена — ...
-    🔄 SELFTEST: провайдеры — ...
+    🧪 MuraveiVision Self-Test
+    1. Импорт модулей...        ✅
+    2. Определение железа...    ✅
+    3. Доступные модели...      📦 (список)
+    4. Загрузка модели YOLO...  ✅
     ✅ SELFTEST OK
 
   Если selftest падает — проверьте:

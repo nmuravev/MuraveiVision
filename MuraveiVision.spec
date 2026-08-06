@@ -22,10 +22,7 @@ a = Analysis(
     excludes=[
         'PySide6',
         'PySide6.QtWebEngineWidgets',
-        'matplotlib',
         'pandas',
-        'torch',
-        'torchvision',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

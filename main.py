@@ -30,14 +30,17 @@ def _check_qt_available():
     Использует importlib.util.find_spec — не загружает PySide6 в процесс,
     чтобы Мини-версия не крашилась (GIL) при открытии браузера.
 
-    Возвращает список отсутствующих пакетов с точными именами для pip install.
+    Возвращает (pro_available: bool, reason: str).
+    reason — пустая строка при успехе, иначе текст для пользователя.
     """
-    missing = []
-    if importlib.util.find_spec("PySide6") is None:
-        missing.append("PySide6")
-    if importlib.util.find_spec("PySide6.QtWebEngineWidgets") is None:
-        missing.append("PySide6-WebEngine")
-    return missing
+    try:
+        if importlib.util.find_spec("PySide6") is None:
+            return False, "PySide6 не установлен: pip install PySide6"
+        if importlib.util.find_spec("PySide6.QtWebEngineWidgets") is None:
+            return False, "нет QtWebEngine: pip install PySide6"
+        return True, ""
+    except (ModuleNotFoundError, ImportError, ValueError):
+        return False, "PySide6 не установлен: pip install PySide6"
 
 
 def _save_diagnostics(exc_info):
@@ -163,17 +166,26 @@ def launch_pro():
 
 
 def main():
-    """Лаунчер: окно выбора [🟢 Мини][🟣 PRO]."""
+    """Лаунчер: окно выбора [🟢 Мини][🟣 PRO].
+
+    Portable-сборка (frozen exe) ВСЕГДА запускает Мини-версию напрямую —
+    без окна выбора, без кнопки PRO, без упоминаний PRO.
+    Лаунчер с выбором версий доступен ТОЛЬКО из исходников (python main.py).
+    """
     # Режим самопроверки
     if "--selftest" in sys.argv:
         run_selftest()
         return
 
-    # Проверяем Qt
-    qt_missing = _check_qt_available()
+    # Portable-сборка: сразу Мини-версия, без лаунчера и без PRO
+    if getattr(sys, "frozen", False):
+        launch_mini()
+        return
 
-    # Portable-сборка: PRO недоступна (PySide6 исключён из spec)
-    is_frozen = getattr(sys, "frozen", False)
+    # --- Запуск из исходников: лаунчер с выбором версий ---
+
+    # Проверяем Qt
+    qt_available, qt_reason = _check_qt_available()
 
     # Если нет PySide6 — показываем простой диалог выбора через tkinter
     # (чтобы не зависеть от Qt для лаунчера)
@@ -206,13 +218,9 @@ def main():
     mini_btn.pack(pady=10)
 
     # Кнопка PRO
-    # В portable-сборке (frozen) PRO недоступна
-    if is_frozen:
+    if not qt_available:
         pro_state = "disabled"
-        pro_reason = "PRO недоступна в портативной версии"
-    elif qt_missing:
-        pro_state = "disabled"
-        pro_reason = "PRO недоступна: не установлены " + ", ".join(qt_missing)
+        pro_reason = "PRO недоступна: " + qt_reason
     else:
         pro_state = "normal"
         pro_reason = None
@@ -230,9 +238,8 @@ def main():
     if pro_reason:
         tk.Label(root, text=pro_reason, font=("Segoe UI", 10),
                  bg="#000000", fg="#FF3B30", wraplength=380).pack(pady=2)
-        if qt_missing and not is_frozen:
-            pip_hint = "pip install " + " ".join(qt_missing)
-            tk.Label(root, text=f"Установите: {pip_hint}", font=("Consolas", 10),
+        if not qt_available:
+            tk.Label(root, text=qt_reason, font=("Consolas", 10),
                      bg="#000000", fg="#00E5FF", wraplength=380).pack(pady=2)
 
     def _on_mini():
