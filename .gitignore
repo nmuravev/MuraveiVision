@@ -3,28 +3,40 @@
 *.key
 *.pem
 
-# Папки с результатами
+# Результаты и логи
 output/
 clips/
 reports/
 runs/
+logs/
+error_log/
 
 # Python
 __pycache__/
 *.pyc
 venv/
+.venv/
 build_venv/
 weights/
 
-# Модели и веса (тяжелые, не нужны в репозитории)
+# Модели и веса (тяжёлые)
 models/
 source_weights/
 *.onnx
 *.pt
 
+# Датасеты
+datasets/
+data/
+
 # Сборки
 dist/
 build/
-training/
-datasets/
-vscode/
+
+# Тренировка: артефакты игнорим, СКРИПТЫ коммитим
+training/*
+!training/*.py
+
+# Мусор
+/d
+src_selftest.txt
