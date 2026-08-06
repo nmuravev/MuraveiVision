@@ -4,6 +4,23 @@ import platform
 import subprocess
 
 
+def _hidden_run(cmd, timeout=5):
+    """Запуск внешней утилиты без чёрного консольного окна (Windows).
+
+    CREATE_NO_WINDOW (0x08000000) + STARTUPINFO(wShowWindow=SW_HIDE=0)
+    предотвращают мелькание консоли при вызове nvidia-smi и др.
+    Возвращает CompletedProcess-подобный объект с .stdout.
+    """
+    kwargs = dict(capture_output=True, text=True, timeout=timeout)
+    if os.name == "nt":
+        kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
+        kwargs["startupinfo"] = si
+    return subprocess.run(cmd, **kwargs)
+
+
 def get_cpu_info() -> dict:
     """Определяет производителя CPU: Intel, AMD или другой."""
     brand = platform.processor() or "Неизвестный CPU"
@@ -20,10 +37,10 @@ def get_nvidia_gpu() -> dict | None:
     """Спрашивает nvidia-smi: есть ли NVIDIA и сколько VRAM.
     Работает с ЛЮБОЙ картой NVIDIA, если установлены драйверы."""
     try:
-        out = subprocess.run(
+        out = _hidden_run(
             ["nvidia-smi", "--query-gpu=name,memory.total",
              "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+            timeout=5,
         ).stdout.strip()
         if not out:
             return None

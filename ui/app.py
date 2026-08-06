@@ -42,8 +42,20 @@ _C_FONT_MONO = ("Consolas", 12)
 # _extract_frame, _get_color убраны — HTML v2 заменяет галерею полностью.
 
 
+_LAUNCH_GUARD = False
+
+
 def launch():
-    """Точка входа GUI."""
+    """Точка входа GUI.
+
+    Защита от повторного запуска: если launch() уже вызвана в этом процессе,
+    второй раз не запускаем — никаких новых окон/процессов не плодим.
+    Анализ выполняется ТОЛЬКО в фоновом потоке текущего окна (threading.Thread).
+    """
+    global _LAUNCH_GUARD
+    if _LAUNCH_GUARD:
+        return
+    _LAUNCH_GUARD = True
     from core import hardware, backend
     from core.detector import MilitaryDetector
     from core.classes import MILITARY_CLASSES
@@ -305,18 +317,79 @@ def launch():
 
     cloud_cb.configure(command=toggle_cloud_frame)
 
-    conf_label = ctk.CTkLabel(ctrl, text="🎯 Чувствительность: 0.35",
-                              text_color=_C_TEXT)
-    conf_label.grid(row=1, column=1, sticky="w")
+    # ── Ползунок чувствительности с цветной шкалой и зонами (ЗАДАЧА 17, п.3) ──
+    # Зоны: 0.05–0.25 красный "шум", 0.25–0.40 жёлтый "чувствительно",
+    #        0.40–0.65 зелёный "оптимум", 0.65–0.95 серый "строго".
+    _CONF_MIN = 0.05
+    _CONF_MAX = 0.95
+    _CONF_DEFAULT = 0.40
+    _CONF_ZONES = [
+        (0.05, 0.25, "#FF3B30", "шум"),
+        (0.25, 0.40, "#FFD60A", "чувствительно"),
+        (0.40, 0.65, "#00FF88", "оптимум"),
+        (0.65, 0.95, "#8A8A8A", "строго"),
+    ]
+
+    def _zone_name(v):
+        for lo, hi, _color, name in _CONF_ZONES:
+            if lo <= v < hi:
+                return name
+        # v == _CONF_MAX
+        return _CONF_ZONES[-1][3]
+
+    # Контейнер ползунка (занимает column=1 и column=2)
+    conf_wrap = ctk.CTkFrame(ctrl, fg_color="transparent")
+    conf_wrap.grid(row=1, column=1, columnspan=2, padx=10, sticky="ew")
+    conf_wrap.grid_columnconfigure(0, weight=1)
+
+    # Живой текст над полосой: "0.40 — оптимум"
+    conf_label = ctk.CTkLabel(
+        conf_wrap,
+        text=f"🎯 {_CONF_DEFAULT:.2f} — {_zone_name(_CONF_DEFAULT)}",
+        text_color=_C_TEXT, font=ctk.CTkFont(size=13, weight="bold"),
+    )
+    conf_label.grid(row=0, column=0, sticky="w", pady=(0, 2))
+
+    # Canvas с цветной полосой зон и делениями
+    conf_canvas = ctk.CTkCanvas(
+        conf_wrap, height=46, bg="#000000", highlightthickness=0, borderwidth=0,
+    )
+    conf_canvas.grid(row=1, column=0, sticky="ew")
+
+    def _draw_conf_bar():
+        conf_canvas.update_idletasks()
+        w = max(conf_canvas.winfo_width(), 200)
+        h = 46
+        conf_canvas.delete("all")
+        # Полосы зон
+        for lo, hi, color, _name in _CONF_ZONES:
+            x0 = (lo - _CONF_MIN) / (_CONF_MAX - _CONF_MIN) * w
+            x1 = (hi - _CONF_MIN) / (_CONF_MAX - _CONF_MIN) * w
+            conf_canvas.create_rectangle(x0, 2, x1, 16, fill=color, outline="")
+        # Деления и подписи 0.1 / 0.3 / 0.5 / 0.7 / 0.9
+        for tick in (0.1, 0.3, 0.5, 0.7, 0.9):
+            x = (tick - _CONF_MIN) / (_CONF_MAX - _CONF_MIN) * w
+            conf_canvas.create_line(x, 16, x, 22, fill="#8A8A8A", width=1)
+            conf_canvas.create_text(
+                x, 32, text=f"{tick:.1f}", fill="#8A8A8A",
+                font=("Consolas", 9), anchor="n",
+            )
+
+    def _on_conf_configure(event):
+        _draw_conf_bar()
+
+    conf_canvas.bind("<Configure>", _on_conf_configure)
 
     def update_conf(v):
-        conf_label.configure(text=f"Чувствительность: {float(v):.2f}")
+        v = float(v)
+        conf_label.configure(text=f"🎯 {v:.2f} — {_zone_name(v)}")
 
     conf_slider = ctk.CTkSlider(
-        ctrl, from_=0.05, to=0.95, number_of_steps=18, command=update_conf
+        conf_wrap, from_=_CONF_MIN, to=_CONF_MAX, number_of_steps=90,
+        command=update_conf,
     )
-    conf_slider.set(0.35)
-    conf_slider.grid(row=1, column=2, padx=10, sticky="ew")
+    conf_slider.set(_CONF_DEFAULT)
+    conf_slider.grid(row=2, column=0, sticky="ew", pady=(2, 0))
 
     # Подпись над прогресс-баром (п.4: "45% • осталось 1м 32с")
     progress_label = ctk.CTkLabel(app, text="0%", text_color=_C_TEXT_SEC,
