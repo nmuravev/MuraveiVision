@@ -151,7 +151,11 @@ def launch():
 
     # ── Смена модели: пересоздать детектор в фоновом потоке ──
     def on_model_change(new_name):
-        """Пересоздаёт детектор с выбранной моделью в фоновом потоке."""
+        """Пересоздаёт детектор с выбранной моделью в фоновом потоке.
+
+        ВАЖНО: НЕ перезапускает процесс/окно — только пересоздаёт детектор
+        в фоновом потоке внутри текущего окна. Второе окно не появляется.
+        """
         if not new_name:
             return
         # Проверяем, что файл существует
@@ -161,7 +165,9 @@ def launch():
         # Записываем в .env
         write_model_override(new_name)
         log_msg("🔄 Загрузка модели...")
-        start_btn.configure(state="disabled", text="🔄 Загрузка модели...")
+        # start_btn может быть ещё не создан (ранний вызов) — защищаемся
+        if start_btn is not None:
+            start_btn.configure(state="disabled", text="🔄 Загрузка модели...")
 
         def _reload():
             nonlocal detector
@@ -437,7 +443,9 @@ def launch():
             start_btn.configure(state="normal", text="🚀 Начать анализ")
             return
         try:
+            # Сброс всех счётчиков прогресса/ETA в начале КАЖДОГО запуска
             progress.set(0)
+            progress_label.configure(text="0%")
             log_msg(f"▶️ Запуск анализа: {os.path.basename(path)}")
             results = detector.analyze_video(
                 path,
@@ -550,17 +558,33 @@ def launch():
                 app.after(0, lambda i=vi, nm=vname: log_msg(
                     f"▶️ Видео {i + 1}/{n}: {nm}"))
 
-                # Колбэк прогресса с учётом позиции в пакете
+                # Сброс прогресса/ETA в начале каждого видео пакета
+                app.after(0, lambda i=vi: (
+                    progress.set(0),
+                    progress_label.configure(text=f"Видео {i + 1}/{n}: 0%"),
+                ))
+
+                # Колбэк прогресса с учётом позиции в пакете + живой ETA
                 def batch_progress(percent, timestamp_str, objects, extra_log=None,
-                                   _vi=vi, _n=n):
+                                   eta_sec=None, _vi=vi, _n=n):
                     """Колбэк прогресса для пакетного режима.
 
                     Общий прогресс = (индекс видео + процент внутри видео) / N.
+                    ETA учитывает только текущее видео (живой прогресс, не 100%).
                     """
                     overall = (_vi + min(percent, 100.0) / 100.0) / _n * 100.0
 
                     def _update():
                         progress.set(min(overall / 100.0, 1.0))
+                        # Живой ETA для текущего видео
+                        eta_str = ""
+                        if eta_sec is not None and eta_sec >= 0:
+                            mins = eta_sec // 60
+                            secs = eta_sec % 60
+                            eta_str = f" • осталось {mins}м {secs}с"
+                        progress_label.configure(
+                            text=f"Видео {_vi + 1}/{_n}: {int(percent)}%{eta_str}"
+                        )
                         if extra_log:
                             log_msg(extra_log)
                         elif objects:
@@ -959,34 +983,22 @@ def launch():
         # Нет ни HTML, ни JSON
         messagebox.showinfo("Отчётов пока нет", "Сначала выполните анализ или откройте JSON-отчёт.")
 
-    # ── Фрейм с кнопками (п.А2): [📄 Файл][📁 Папка][📂 Открыть отчёт]
+    # ── Фрейм с кнопками (п.А2): [📁 Пакетная обработка][📂 Открыть отчёт]
     #    [📄 Открыть HTML][▶️ Анализ] ──
+    # Кнопка "📄 Файл" убрана — дублирует "📹 Выбрать видео" выше.
     btn_frame = ctk.CTkFrame(app, fg_color=_C_BG)
     btn_frame.pack(pady=10)
 
-    # Кнопка "📄 Файл" — выбор одиночного видео
-    file_btn = ctk.CTkButton(
-        btn_frame,
-        text="📄 Файл",
-        command=choose_video,
-        fg_color=_C_ACCENT,
-        hover_color=_C_ACCENT_HOVER,
-        text_color="#000000",
-        height=45,
-        width=140,
-    )
-    file_btn.pack(side="left", padx=8)
-
-    # Кнопка "📁 Папка" — пакетная обработка папки
+    # Кнопка "📁 Пакетная обработка" — пакетная обработка папки
     batch_btn = ctk.CTkButton(
         btn_frame,
-        text="📁 Папка",
+        text="📁 Пакетная обработка",
         command=start_batch,
         fg_color=_C_ACCENT,
         hover_color=_C_ACCENT_HOVER,
         text_color="#000000",
         height=45,
-        width=140,
+        width=200,
     )
     batch_btn.pack(side="left", padx=8)
 
