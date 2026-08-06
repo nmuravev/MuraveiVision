@@ -1,0 +1,210 @@
+
+[1/5] Cleaning old build...
+
+[2/5] Building via PyInstaller (onedir, windowed)...
+136 INFO: PyInstaller: 6.21.0, contrib hooks: 2026.6
+136 INFO: Python: 3.14.7
+159 INFO: Platform: Windows-11-10.0.26200-SP0
+159 INFO: Python environment: C:\Python314
+1208 INFO: Module search paths (PYTHONPATH):
+['D:\\LLM\\MuraveiVision',
+ 'C:\\Python314\\python314.zip',
+ 'C:\\Python314\\DLLs',
+ 'C:\\Python314\\Lib',
+ 'C:\\Python314',
+ 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages',
+ 'C:\\Python314\\Lib\\site-packages',
+ 'D:\\LLM\\MuraveiVision']
+1626 INFO: Appending 'datas' from .spec
+1628 INFO: checking Analysis
+1628 INFO: Building Analysis because Analysis-00.toc is non existent
+1628 INFO: Looking for Python shared library...
+1628 INFO: Using Python shared library: C:\Python314\python314.dll
+1628 INFO: Running Analysis Analysis-00.toc
+1628 INFO: Target bytecode optimization level: 0
+1628 INFO: Initializing module dependency graph...
+1629 INFO: Initializing module graph hook caches...
+1638 INFO: Analyzing modules for base_library.zip ...
+3072 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+3481 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+4420 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+4429 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+4509 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+5544 INFO: Caching module dependency graph...
+5568 INFO: Analyzing D:\LLM\MuraveiVision\main.py
+5620 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+5649 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+5653 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+5672 INFO: Processing standard module hook 'hook-onnxruntime.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+5739 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+5969 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+5970 INFO: SetuptoolsInfo: initializing cached setuptools info...
+6661 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+6735 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+7580 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+8677 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+8943 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+9239 INFO: Processing standard module hook 'hook-torch.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+1226 WARNING: Failed to collect submodules for 'torch.utils.tensorboard' because importing 'torch.utils.tensorboard' raised: ModuleNotFoundError: No module named 'tensorboard'
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
+  __import__(name)
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._sharded_tensor` will be deprecated, use `torch.distributed._shard.sharded_tensor` instead
+  __import__(name)
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
+  __import__(name)
+16187 INFO: hook-torch: this torch build does not depend on MKL...
+17310 INFO: Processing standard module hook 'hook-matplotlib.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+17569 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+17868 INFO: Processing standard module hook 'hook-matplotlib.backend_bases.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+17995 INFO: Processing standard module hook 'hook-PIL.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+18081 INFO: Processing standard module hook 'hook-PIL.Image.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+18463 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+18604 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+19206 INFO: Processing standard module hook 'hook-jinja2.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+19638 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+19718 INFO: Processing standard module hook 'hook-matplotlib.pyplot.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+20338 INFO: Processing standard module hook 'hook-dateutil.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+20396 INFO: Processing pre-safe-import-module hook 'hook-six.moves.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+21640 INFO: Processing standard module hook 'hook-pandas.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+22926 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+23083 INFO: Processing standard module hook 'hook-scipy.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+26786 INFO: Processing standard module hook 'hook-scipy.spatial._ckdtree.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+26814 INFO: Processing standard module hook 'hook-scipy.linalg.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+26926 INFO: Processing standard module hook 'hook-scipy.special._ufuncs.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+28094 INFO: Processing standard module hook 'hook-scipy.sparse.csgraph.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+28277 INFO: Processing standard module hook 'hook-scipy.special._ellip_harm_2.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+29055 INFO: Processing standard module hook 'hook-scipy.spatial.transform.rotation.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+29726 INFO: Processing standard module hook 'hook-scipy.stats._stats.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+30972 INFO: Processing standard module hook 'hook-pandas.io.formats.style.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+32397 INFO: Processing standard module hook 'hook-numba.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+32411 INFO: Processing standard module hook 'hook-llvmlite.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+32806 INFO: Processing standard module hook 'hook-pygments.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+34984 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+34993 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35016 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35017 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+35026 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35316 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+35318 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35324 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35325 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+35608 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+35609 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+35988 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+38344 INFO: Processing pre-safe-import-module hook 'hook-win32com.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+39936 INFO: Processing standard module hook 'hook-pandas.plotting.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+41485 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+41825 INFO: Processing standard module hook 'hook-pandas.io.clipboard.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+41931 INFO: Processing standard module hook 'hook-fsspec.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+42801 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+43019 INFO: Processing standard module hook 'hook-imageio.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+43763 INFO: Processing standard module hook 'hook-imageio_ffmpeg.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+C:\Python314\Lib\site-packages\sympy\testing\runtests.py:283: SyntaxWarning: 'return' in a 'finally' block
+  return p.returncode
+61483 INFO: Processing standard module hook 'hook-torchvision.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+62188 INFO: Processing standard module hook 'hook-torchvision.io.image.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+64767 INFO: Processing standard module hook 'hook-scipy.io.matlab.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+66475 INFO: Processing standard module hook 'hook-torchaudio.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+71970 INFO: Processing standard module hook 'hook-rich.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+82705 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+86068 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+86075 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+87120 INFO: Processing pre-safe-import-module hook 'hook-tensorflow.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\pre_safe_import_module'
+87138 INFO: Processing standard module hook 'hook-cv2.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+87608 INFO: Processing standard module hook 'hook-ultralytics.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+88618 INFO: Processing standard module hook 'hook-pydantic.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+115 WARNING: Failed to collect submodules for 'pydantic' because importing 'pydantic' raised: SystemError: The installed pydantic-core version (2.47.0) is incompatible with the current pydantic version, which requires 2.46.4. If you encounter this error, make sure that you haven't upgraded pydantic-core manually.
+90236 INFO: Processing standard module hook 'hook-pytz.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+92563 INFO: Processing standard module hook 'hook-wcwidth.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+92699 INFO: Processing standard module hook 'hook-regex.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+93626 INFO: Processing standard module hook 'hook-datasets.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+95116 INFO: Processing standard module hook 'hook-shapely.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+95624 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+95626 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+96586 WARNING: TclTkInfo: Tcl library/data directory '//zipfs:/lib/tcl/tcl_library' does not exist!
+96587 WARNING: TclTkInfo: Tk library/data directory '//zipfs:/lib/tcl\\tk9.0' does not exist!
+96714 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+97360 INFO: Processing standard module hook 'hook-customtkinter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+98390 INFO: Processing module hooks (post-graph stage)...
+111172 INFO: Processing standard module hook 'hook-matplotlib.backends.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+111174 INFO: Matplotlib backend selection method: automatic discovery of used backends
+111194 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'sympy.testing.runtests': ['Agg', 'Agg']
+111232 INFO: Discovered Matplotlib backend(s) via `matplotlib.use()` call in module 'imageio.plugins._tifffile': ['TkAgg']
+111232 INFO: The following Matplotlib backends were discovered by scanning for `matplotlib.use()` calls: ['Agg', 'TkAgg']. If your backend of choice is not in this list, either add a `matplotlib.use()` call to your code, or configure the backend collection via hook options (see: https://pyinstaller.org/en/stable/hooks-config.html#matplotlib-hooks).
+111232 INFO: Selected matplotlib backends: ['Agg', 'TkAgg']
+112139 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+116703 WARNING: Hidden import "scipy.special._cdflib" not found!
+116789 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+116791 INFO: Processing standard module hook 'hook-tzdata.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+117286 INFO: Performing binary vs. data reclassification (1677 entries)
+124497 INFO: Looking for ctypes DLLs
+124970 WARNING: Ignoring /usr/lib64/libgomp.so.1 imported from C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\torch\_inductor\codecache.py - only basenames are supported with ctypes imports!
+125119 WARNING: Ignoring AppKit.framework/AppKit imported from C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\darkdetect\_mac_detect.py - only basenames are supported with ctypes imports!
+125205 INFO: Analyzing run-time hooks ...
+125240 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125255 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125268 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125283 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125294 INFO: Including run-time hook 'pyi_rth_mplconfig.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125306 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+125319 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks'
+125356 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\PyInstaller\\hooks\\rthooks'
+125368 INFO: Including run-time hook 'pyi_rth_traitlets.py' from 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+125495 INFO: Creating base_library.zip...
+125516 INFO: Looking for dynamic libraries
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._sharding_spec` will be deprecated, use `torch.distributed._shard.sharding_spec` instead
+  __import__(package)
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._sharded_tensor` will be deprecated, use `torch.distributed._shard.sharded_tensor` instead
+  __import__(package)
+C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\building\build_main.py:227: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
+  __import__(package)
+138319 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\numpy.libs', 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\pandas.libs', 'C:\\Python314\\Lib\\site-packages\\llvmlite.libs', 'C:\\Python314\\Lib\\site-packages\\scipy.libs', 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\torch\\lib', 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\torchvision', 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\torchvision', 'C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\cv2\\../../x64/vc17/bin', 'C:\\Python314\\Lib\\site-packages\\shapely.libs', 'C:\\Python314\\Lib\\site-packages']
+138319 INFO: Extra DLL search directories (PATH): ['C:\\Users\\MECHREVO\\AppData\\Roaming\\Python\\Python314\\site-packages\\cv2\\../../x64/vc17/bin']
+142091 WARNING: Library not found: could not resolve 'cudnn64_9.dll', dependency of 'C:\\Python314\\Lib\\site-packages\\onnxruntime\\capi\\onnxruntime_providers_tensorrt.dll'.
+142092 WARNING: Library not found: could not resolve 'nvinfer_10.dll', dependency of 'C:\\Python314\\Lib\\site-packages\\onnxruntime\\capi\\onnxruntime_providers_tensorrt.dll'.
+142092 WARNING: Library not found: could not resolve 'nvonnxparser_10.dll', dependency of 'C:\\Python314\\Lib\\site-packages\\onnxruntime\\capi\\onnxruntime_providers_tensorrt.dll'.
+142111 WARNING: Library not found: could not resolve 'tbb12.dll', dependency of 'C:\\Python314\\Lib\\site-packages\\numba\\np\\ufunc\\tbbpool.cp314-win_amd64.pyd'.
+142306 INFO: Warnings written to D:\LLM\MuraveiVision\build\MuraveiVision\warn-MuraveiVision.txt
+142763 INFO: Graph cross-reference written to D:\LLM\MuraveiVision\build\MuraveiVision\xref-MuraveiVision.html
+142952 INFO: checking PYZ
+142952 INFO: Building PYZ because PYZ-00.toc is non existent
+142952 INFO: Building PYZ (ZlibArchive) D:\LLM\MuraveiVision\build\MuraveiVision\PYZ-00.pyz
+145884 INFO: Building PYZ (ZlibArchive) D:\LLM\MuraveiVision\build\MuraveiVision\PYZ-00.pyz completed successfully.
+145970 INFO: checking PKG
+145970 INFO: Building PKG because PKG-00.toc is non existent
+145970 INFO: Building PKG (CArchive) MuraveiVision.pkg
+146030 INFO: Building PKG (CArchive) MuraveiVision.pkg completed successfully.
+146031 INFO: Bootloader C:\Users\MECHREVO\AppData\Roaming\Python\Python314\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+146031 INFO: checking EXE
+146031 INFO: Building EXE because EXE-00.toc is non existent
+146031 INFO: Building EXE from EXE-00.toc
+146031 INFO: Copying bootloader EXE to D:\LLM\MuraveiVision\build\MuraveiVision\MuraveiVision.exe
+146111 INFO: Copying icon to EXE
+146156 INFO: Copying 0 resources to EXE
+146156 INFO: Embedding manifest in EXE
+146194 INFO: Appending PKG archive to EXE
+146288 INFO: Fixing EXE headers
+146678 INFO: Building EXE from EXE-00.toc completed successfully.
+146706 INFO: checking COLLECT
+146706 INFO: Building COLLECT because COLLECT-00.toc is non existent
+146707 INFO: Building COLLECT COLLECT-00.toc
+150804 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+150879 INFO: Build complete! The results are available in: D:\LLM\MuraveiVision\dist
+
+[3/5] Copying models to dist\MuraveiVision\models\...
+models\yolov8l-worldv2.onnx
+models\yolov8m-worldv2.onnx
+models\yolov8s-worldv2-finetuned.onnx
+models\yolov8s-worldv2.onnx
+        4 file(s) copied.
+
+[4/5] Creating output\ and copying .env.example...
+        1 file(s) copied.
+
+[5/5] Copying README_portable.txt...
+        1 file(s) copied.
+
+BUILD COMPLETE: dist\MuraveiVision\
+
+Verify: dist\MuraveiVision\MuraveiVision.exe --selftest
+

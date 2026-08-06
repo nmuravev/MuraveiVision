@@ -1,51 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec для MuraveiVision (portable, onedir, windowed)."""
+from PyInstaller.utils.hooks import collect_all
 
-block_cipher = None
+datas = []
+binaries = []
+hiddenimports = []
+tmp_ret = collect_all('customtkinter')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[],
-    hiddenimports=[
-        'ultralytics',
-        'customtkinter',
-        'onnxruntime',
-        'cv2',
-        'PIL',
-        'dotenv',
-    ],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'PySide6',
-        'PySide6.QtWebEngineWidgets',
-        'pandas',
-    ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=['PySide6'],
     noarchive=False,
+    optimize=0,
 )
-
-import os
-import ultralytics
-ultralytics_dir = os.path.dirname(ultralytics.__file__)
-a.datas += Tree(ultralytics_dir, prefix='ultralytics', excludes=['*.pyc'])
-
-import customtkinter
-ctk_dir = os.path.dirname(customtkinter.__file__)
-a.datas += Tree(ctk_dir, prefix='customtkinter', excludes=['*.pyc'])
-
-import onnxruntime
-ort_dir = os.path.dirname(onnxruntime.__file__)
-a.binaries += [(os.path.join(ort_dir, f), 'onnxruntime')
-               for f in os.listdir(ort_dir)
-               if f.endswith('.dll') or f.endswith('.so') or f.endswith('.pyd')]
-
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -64,11 +40,9 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
     upx=True,
