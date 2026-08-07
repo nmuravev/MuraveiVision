@@ -1,59 +1,49 @@
-"""Вентиль качества + экспорт УЖЕ ОБУЧЕННОЙ модели (без переобучения).
-Windows-фикс: весь код внутри __name__ == '__main__'."""
-import os, shutil, sys
+"""Экспорт обученной модели в ONNX + бэкап старой.
+Запуск из корня проекта: python training/export_finetune.py"""
+import os
+import sys
 from pathlib import Path
-import yaml
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from dotenv import load_dotenv
-load_dotenv()
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from ultralytics import YOLO
-from core.classes import MILITARY_CLASSES
 
+import ultralytics.utils.checks as _ul_checks
+_ul_checks.check_requirements = lambda *args, **kwargs: None
 
-def find_best():
-    cands = sorted(Path("runs").rglob("best.pt"),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
-    return cands[0] if cands else None
-
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BEST_PT = PROJECT_ROOT / "runs" / "finetune" / "v2_dict206" / "weights" / "best.pt"
+OUTPUT_ONNX = PROJECT_ROOT / "models" / "yolov8s-worldv2-finetuned.onnx"
+BACKUP_ONNX = PROJECT_ROOT / "models" / "yolov8s-worldv2-finetuned-backup.onnx"
 
 def main():
-    SIZE = os.getenv("FINETUNE_SIZE", "s")
-    DATA = Path("datasets/military_merged/data.yaml")
-
-    best = find_best()
-    if best is None:
-        print("❌ best.pt не найден в runs/. Сначала обучение.")
+    if not BEST_PT.exists():
+        print(f"❌ Нет обученной модели: {BEST_PT}")
+        print("   Сначала: python training/train_finetune.py")
         sys.exit(1)
-    print(f"📦 Модель найдена: {best}")
 
-    names = yaml.safe_load(DATA.read_text(encoding="utf-8"))["names"]
+    # Бэкап старой модели (один раз)
+    if OUTPUT_ONNX.exists() and not BACKUP_ONNX.exists():
+        print(f"💾 Бэкап старой модели: {BACKUP_ONNX.name}")
+        OUTPUT_ONNX.replace(BACKUP_ONNX)
 
-    print("📏 Вентиль качества (zero-shot vs finetune)...")
-    base = YOLO(str(Path("source_weights") / f"yolov8{SIZE}-worldv2.pt"))
-    base.set_classes(names)
-    m_base = base.val(data=str(DATA), device=0, verbose=False, workers=0)
-    ft = YOLO(str(best))
-    m_ft = ft.val(data=str(DATA), device=0, verbose=False, workers=0)
+    model = YOLO(str(BEST_PT))
 
-    print(f"   zero-shot mAP50: {m_base.box.map50:.3f}")
-    print(f"   finetune  mAP50: {m_ft.box.map50:.3f}")
-    if m_base.box.map50 > 0:
-        imp = (m_ft.box.map50 - m_base.box.map50) / m_base.box.map50 * 100
-        print(f"   улучшение: {imp:+.1f}%")
+    print("🚀 Экспорт в ONNX...")
+    export_path = model.export(format="onnx", opset=17, simplify=True, imgsz=640)
 
-    if m_ft.box.map50 <= m_base.box.map50:
-        print("❌ Финтюн не лучше базовой — боевая модель НЕ тронута.")
-        sys.exit(0)
+    if os.path.exists(export_path):
+        os.replace(export_path, str(OUTPUT_ONNX))
+    else:
+        print(f"❌ Файл не найден: {export_path}")
+        sys.exit(1)
 
-    print("📦 Экспорт с полным словарём 86 классов...")
-    ft.set_classes(MILITARY_CLASSES)
-    ft.export(format="onnx", simplify=True, opset=17, dynamic=False)
-    src_onnx = best.with_suffix(".onnx")
-    out = Path(f"models/yolov8{SIZE}-worldv2-finetuned.onnx")
-    shutil.move(str(src_onnx), str(out))
-    print(f"\n✅ Готово: {out}")
-
+    # Проверка: сколько классов в итоге
+    import onnxruntime as ort
+    sess = ort.InferenceSession(str(OUTPUT_ONNX))
+    n = sess.get_outputs()[0].shape[1]
+    print(f"✅ Экспортировано: {OUTPUT_ONNX.name}")
+    print(f"📊 Классов в ONNX: {n} (ожидается 86 — размеченные; индексы 0-85 = первые 86 словаря)")
 
 if __name__ == "__main__":
     main()

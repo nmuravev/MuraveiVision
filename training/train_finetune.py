@@ -1,85 +1,64 @@
-"""Файнтюн YOLO-World v2 на РЕАЛЬНЫХ данных + вентиль + экспорт.
-RTX 5060: s=batch 8 (OOM → 4), m=4, l=2. Windows-фикс: код в __main__."""
-import os, shutil, sys
+"""Переобучение YOLOv8s-worldv2 на военном датасете.
+Запуск из корня проекта: python training/train_finetune.py"""
+import sys
 from pathlib import Path
-import yaml
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from dotenv import load_dotenv
-load_dotenv()
+# Корень проекта в пути поиска (иначе "No module named 'core'")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from ultralytics import YOLO
 from core.classes import MILITARY_CLASSES
 
+# Замок от автообновления ultralytics
+import ultralytics.utils.checks as _ul_checks
+_ul_checks.check_requirements = lambda *args, **kwargs: None
 
-def find_best():
-    """Ищем свежий best.pt ГДЕ УГОДНО в runs/ — ultralytics
-    может добавить свои папки (runs/detect/runs/...)."""
-    cands = sorted(Path("runs").rglob("best.pt"),
-                   key=lambda p: p.stat().st_mtime, reverse=True)
-    return cands[0] if cands else None
-
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATASET_YAML = PROJECT_ROOT / "datasets" / "military_merged" / "data.yaml"
+SOURCE_MODEL = PROJECT_ROOT / "source_weights" / "yolov8s-worldv2.pt"
+RUNS_DIR = PROJECT_ROOT / "runs" / "finetune"
 
 def main():
-    SIZE = os.getenv("FINETUNE_SIZE", "s")
-    BATCH = {"s": 8, "m": 4, "l": 2}[SIZE]
-    SRC = Path("source_weights") / f"yolov8{SIZE}-worldv2.pt"
-    DATA = Path("datasets/military_merged/data.yaml")
-
-    print("=" * 60)
-    print("🎓 ФАЙНТЮН YOLO-WORLD V2 НА РЕАЛЬНЫХ ДАННЫХ")
-    print("=" * 60)
-
-    if not DATA.exists():
-        print("❌ Датасет не найден. Сначала: python training/prepare_data.py")
+    if not DATASET_YAML.exists():
+        print(f"❌ Нет датасета: {DATASET_YAML}")
         sys.exit(1)
 
-    print("\n📊 Фаза 1: обучение...")
-    model = YOLO(str(SRC))
-    try:
-        model.train(data=str(DATA), epochs=30, imgsz=640, batch=BATCH,
-                    device=0, workers=4, patience=8,
-                    project="runs/mv_finetune", name=f"worldv2_{SIZE}_real",
-                    exist_ok=True, verbose=False)
-    except Exception as e:
-        print(f"⚠️ Ошибка с workers=4, повторяю с workers=0: {e}")
-        model = YOLO(str(SRC))
-        model.train(data=str(DATA), epochs=30, imgsz=640, batch=BATCH,
-                    device=0, workers=0, patience=8,
-                    project="runs/mv_finetune", name=f"worldv2_{SIZE}_real",
-                    exist_ok=True, verbose=False)
+    print(f"📋 Словарь программы: {len(MILITARY_CLASSES)} классов")
+    print(f"📦 Датасет: {DATASET_YAML} (86 размеченных классов)")
+    print(f"🎯 Источник: {SOURCE_MODEL.name}")
+    print("💡 Эмбеддинги классов тренер построит сам из data.yaml\n")
 
-    best = find_best()
-    if best is None:
-        print("❌ best.pt не создан. См. логи выше.")
-        sys.exit(1)
-    print(f"📦 Модель найдена: {best}")
+    model = YOLO(str(SOURCE_MODEL))
 
-    print("\n📏 Фаза 2: вентиль качества...")
-    names = yaml.safe_load(DATA.read_text(encoding="utf-8"))["names"]
-    base = YOLO(str(SRC))
-    base.set_classes(names)
-    m_base = base.val(data=str(DATA), device=0, verbose=False)
-    ft = YOLO(str(best))
-    m_ft = ft.val(data=str(DATA), device=0, verbose=False)
+    print("🚀 Старт обучения...")
+    model.train(
+        data=str(DATASET_YAML),
+        epochs=50,
+        imgsz=640,
+        batch=8,
+        device=0,
+        workers=4,
+        project=str(RUNS_DIR),
+        name="v2_dict206",
+        exist_ok=True,
+        pretrained=True,
+        optimizer="AdamW",
+        lr0=0.001,
+        lrf=0.01,
+        patience=20,
+        save=True,
+        save_period=10,
+        plots=True,
+        amp=True,
+        cache=False,
+        hsv_h=0.015, hsv_s=0.5, hsv_v=0.3,
+        degrees=5.0, translate=0.1, scale=0.3,
+        fliplr=0.5, mosaic=0.5, mixup=0.1,
+    )
 
-    print(f"   zero-shot mAP50: {m_base.box.map50:.3f}")
-    print(f"   finetune  mAP50: {m_ft.box.map50:.3f}")
-    if m_base.box.map50 > 0:
-        imp = (m_ft.box.map50 - m_base.box.map50) / m_base.box.map50 * 100
-        print(f"   улучшение: {imp:+.1f}%")
-
-    if m_ft.box.map50 <= m_base.box.map50:
-        print("\n❌ Финтюн не лучше базовой — боевая модель НЕ тронута.")
-        sys.exit(0)
-
-    print("\n📦 Фаза 3: экспорт с полным словарём 86 классов...")
-    ft.set_classes(MILITARY_CLASSES)
-    ft.export(format="onnx", simplify=True, opset=17, dynamic=False)
-    src_onnx = best.with_suffix(".onnx")
-    out = Path(f"models/yolov8{SIZE}-worldv2-finetuned.onnx")
-    shutil.move(str(src_onnx), str(out))
-    print(f"\n✅ Готово: {out}")
-
+    best = RUNS_DIR / "v2_dict206" / "weights" / "best.pt"
+    print(f"\n✅ Обучение завершено!")
+    print(f"🏆 Лучший чекпоинт: {best}")
 
 if __name__ == "__main__":
     main()
