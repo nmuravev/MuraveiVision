@@ -1,6 +1,0 @@
-2026-08-08 16:54:05,788 [INFO] Режим отладки включён. Лог: D:\LLM\MuraveiVision\output_log\mv_20260808_165405.log
-2026-08-08 16:54:05,788 [DEBUG] Режим отладки включён
-2026-08-08 16:54:09,543 [DEBUG] analyze_video start: D:/Radistka/Девушка оператор FPV жжет технику НАТО.mp4, drone=False, conf=0.40
-2026-08-08 16:58:45,938 [DEBUG] analyze_video done: 529 moments
-2026-08-08 16:59:54,341 [DEBUG] HTML generate failed: main thread is not in main loop
-2026-08-08 16:59:55,434 [DEBUG] run_analysis failed: main thread is not in main loop

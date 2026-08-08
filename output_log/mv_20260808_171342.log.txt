@@ -1,0 +1,5 @@
+2026-08-08 17:13:42,459 [INFO] Режим отладки включён. Лог: D:\LLM\MuraveiVision\output_log\mv_20260808_171342.log
+2026-08-08 17:13:42,459 [DEBUG] Запуск: модель=yolov8s-worldv2-finetuned.onnx, PID=40200
+2026-08-08 17:13:42,692 [DEBUG] Словарь: 206 классов; модель=yolov8s-worldv2-finetuned.onnx; провайдеры=['CUDAExecutionProvider', 'CPUExecutionProvider']
+2026-08-08 17:14:12,923 [DEBUG] analyze_video start: D:/Radistka/video_2026-07-25_04-13-54.mp4, drone=False, conf=0.40
+2026-08-08 17:15:04,831 [DEBUG] analyze_video done: 337 moments
