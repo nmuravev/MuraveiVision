@@ -1,5 +1,6 @@
 {
     "python.analysis.autoImportCompletions": true,
     "python.analysis.typeCheckingMode": "basic",
-    "terminal.integrated.defaultProfile.windows": "Windows PowerShell"
+    "terminal.integrated.defaultProfile.windows": "Windows PowerShell",
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

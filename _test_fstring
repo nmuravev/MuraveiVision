@@ -1,0 +1,5 @@
+x = {"a": "longstring"}
+y = f"var _verdicts = { {str(k): v[:5] for k, v in x.items()} };"
+print("single braces:", repr(y))
+z = f"var _verdicts = {{str(k): v[:5] for k, v in x.items()}};"
+print("double braces:", repr(z))
