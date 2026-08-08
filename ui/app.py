@@ -2,6 +2,8 @@
 import os
 import json
 import glob
+import logging
+import traceback
 import threading
 import datetime
 
@@ -63,8 +65,26 @@ def launch():
 
     app = ctk.CTk()
     app.title("🎯 MuraveiVision — Military Object Detector")
-    app.geometry("1200x800")
+    app.geometry("1280x800")
     app.configure(fg_color=_C_BG)
+    # Окно сразу развёрнуто на весь экран
+    try:
+        app.state("zoomed")
+    except Exception:
+        pass
+    app.minsize(1280, 800)
+
+    # ── Автозагрузка модели при старте ──
+    # Приоритет: models/yolov8s-worldv2-finetuned.onnx, иначе models/yolov8s-worldv2.onnx
+    _ft_model = "yolov8s-worldv2-finetuned.onnx"
+    _base_model = "yolov8s-worldv2.onnx"
+    _auto_model = None
+    if (models_dir() / _ft_model).exists():
+        _auto_model = _ft_model
+    elif (models_dir() / _base_model).exists():
+        _auto_model = _base_model
+    if _auto_model:
+        os.environ["MODEL_OVERRIDE"] = _auto_model
 
     detector = MilitaryDetector()
 
@@ -86,119 +106,79 @@ def launch():
         text_color=_C_TEXT_SEC,
     ).pack(pady=5)
 
+    # ── Режим отладки (п.4) ──
+    # Состояние запоминается в debug_mode.json рядом с exe/main.py
+    _debug_cfg_path = str(app_root() / "debug_mode.json")
 
-    # ── Панель выбора модели (п.2: combobox + добавить) ──
-    model_frame = ctk.CTkFrame(app, fg_color=_C_CARD, border_color=_C_BORDER, border_width=1)
-    model_frame.pack(padx=20, pady=(0, 5), fill="x")
-
-    ctk.CTkLabel(
-        model_frame, text="🤖 Модель:",
-        font=ctk.CTkFont(size=13, weight="bold"), text_color=_C_TEXT_SEC,
-    ).pack(side="left", padx=(10, 5), pady=8)
-
-    # Список моделей из models/
-    def list_models():
-        mdir = models_dir()
-        if not mdir.exists():
-            return []
-        return sorted([f.name for f in mdir.glob("*.onnx")])
-
-    model_var = ctk.StringVar(value=detector.model_name)
-    model_combo = ctk.CTkComboBox(
-        model_frame, variable=model_var, values=list_models(),
-        width=350, fg_color="#000000", border_color=_C_BORDER,
-        button_color=_C_ACCENT, button_hover_color=_C_ACCENT_HOVER,
-        text_color=_C_TEXT, dropdown_fg_color=_C_CARD,
-    )
-    model_combo.pack(side="left", padx=5, pady=8)
-
-    # Кнопка "➕ Добавить модель"
-    def add_model():
-        """askopenfilename(.onnx) → копировать в models/ → обновить список → выбрать."""
-        src = filedialog.askopenfilename(
-            title="Выберите ONNX-модель",
-            filetypes=[("ONNX-модели", "*.onnx"), ("Все файлы", "*.*")],
-        )
-        if not src:
-            return
-        import shutil
-        dst = models_dir() / os.path.basename(src)
+    def _load_debug_state():
         try:
-            shutil.copy2(src, dst)
-            log_msg(f"📥 Модель скопирована: {dst.name}")
-        except Exception as e:
-            messagebox.showerror("Ошибка", "Не удалось скопировать модель: " + str(e))
+            with open(_debug_cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("enabled", False)
+        except Exception:
+            return False
+
+    def _save_debug_state(enabled):
+        try:
+            with open(_debug_cfg_path, "w", encoding="utf-8") as f:
+                json.dump({"enabled": bool(enabled)}, f)
+        except Exception:
+            pass
+
+    debug_var = ctk.BooleanVar(value=_load_debug_state())
+
+    # ── Логирование: last_error.log (всегда) + debug-лог (по чекбоксу) ──
+    _log_dir = app_root() / "output_log"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _last_error_path = str(_log_dir / "last_error.log")
+
+    def _write_last_error(exc, context=""):
+        """Страховка: всегда пишет полный traceback в last_error.log (перезаписывается)."""
+        try:
+            with open(_last_error_path, "w", encoding="utf-8") as f:
+                f.write(f"=== {datetime.datetime.now().isoformat()} ===\n")
+                if context:
+                    f.write(f"Контекст: {context}\n")
+                f.write("".join(traceback.format_exception(exc)))
+        except Exception:
+            pass
+
+    _debug_logger = None
+
+    def _setup_debug_logger():
+        """Создаёт/пересоздаёт file-логгер для режима отладки."""
+        nonlocal _debug_logger
+        if _debug_logger is not None:
+            for h in list(_debug_logger.handlers):
+                _debug_logger.removeHandler(h)
+                try:
+                    h.close()
+                except Exception:
+                    pass
+            _debug_logger = None
+        if not debug_var.get():
             return
-        # Обновляем список
-        model_combo.configure(values=list_models())
-        # Выбираем добавленную
-        model_var.set(dst.name)
-        on_model_change(dst.name)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = str(_log_dir / f"mv_{ts}.log")
+        _debug_logger = logging.getLogger("mv_debug")
+        _debug_logger.setLevel(logging.DEBUG)
+        _debug_logger.handlers.clear()
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(message)s"))
+        _debug_logger.addHandler(fh)
+        _debug_logger.info(f"Режим отладки включён. Лог: {log_file}")
 
-    ctk.CTkButton(
-        model_frame, text="➕ Добавить модель", command=add_model,
-        fg_color=_C_ACCENT, hover_color=_C_ACCENT_HOVER, text_color="#000000",
-        width=180, height=32,
-    ).pack(side="left", padx=5, pady=8)
+    _setup_debug_logger()
 
-    # ── Запись MODEL_OVERRIDE в .env ──
-    def write_model_override(model_name):
-        """Записывает MODEL_OVERRIDE=<имя> в .env, не трогая остальные строки."""
-        env_path = str(app_root() / ".env")
-        lines = []
-        found = False
-        if os.path.exists(env_path):
-            with open(env_path, "r", encoding="utf-8") as fenv:
-                lines = fenv.readlines()
-        for i, line in enumerate(lines):
-            if line.startswith("MODEL_OVERRIDE="):
-                lines[i] = "MODEL_OVERRIDE=" + model_name + "\n"
-                found = True
-                break
-        if not found:
-            lines.append("MODEL_OVERRIDE=" + model_name + "\n")
-        with open(env_path, "w", encoding="utf-8") as fenv:
-            fenv.writelines(lines)
-        os.environ["MODEL_OVERRIDE"] = model_name
-
-    # ── Смена модели: пересоздать детектор в фоновом потоке ──
-    def on_model_change(new_name):
-        """Пересоздаёт детектор с выбранной моделью в фоновом потоке.
-
-        ВАЖНО: НЕ перезапускает процесс/окно — только пересоздаёт детектор
-        в фоновом потоке внутри текущего окна. Второе окно не появляется.
-        """
-        if not new_name:
-            return
-        # Проверяем, что файл существует
-        if not (models_dir() / new_name).exists():
-            log_msg(f"⚠️ Модель не найдена: {new_name}")
-            return
-        # Записываем в .env
-        write_model_override(new_name)
-        log_msg("🔄 Загрузка модели...")
-        # start_btn может быть ещё не создан (ранний вызов) — защищаемся
-        if start_btn is not None:
-            start_btn.configure(state="disabled", text="🔄 Загрузка модели...")
-
-        def _reload():
-            nonlocal detector
+    def _debug(msg):
+        if _debug_logger is not None:
             try:
-                os.environ["MODEL_OVERRIDE"] = new_name
-                from core.detector import MilitaryDetector
-                new_det = MilitaryDetector()
-                detector = new_det
-                app.after(0, lambda: log_msg(f"✅ Модель: {detector.model_name}"))
-                app.after(0, lambda: log_msg(f"🖥️ Провайдеры: {', '.join(detector.providers)}"))
-            except Exception as e:
-                app.after(0, lambda err=e: log_msg(f"❌ Ошибка загрузки модели: {err}"))
-            finally:
-                app.after(0, lambda: start_btn.configure(state="normal", text="🚀 Начать анализ"))
+                _debug_logger.debug(msg)
+            except Exception:
+                pass
 
-        threading.Thread(target=_reload, daemon=True).start()
-
-    # Привязываем смену модели в combobox
-    model_combo.configure(command=on_model_change)
+    _debug(f"Запуск: модель={_auto_model}, PID={os.getpid()}")
 
     # Фрейм управления
     ctrl = ctk.CTkFrame(app, fg_color=_C_BG, border_color=_C_BORDER, border_width=1)
@@ -223,9 +203,27 @@ def launch():
     ).grid(row=0, column=0, padx=10, pady=10)
 
     drone_var = ctk.BooleanVar(value=False)
-    ctk.CTkCheckBox(ctrl, text="🎯 🚁 Режим дрона", variable=drone_var,
+    ctk.CTkCheckBox(ctrl, text="🎯  Режим дрона", variable=drone_var,
                     text_color=_C_TEXT).grid(
         row=1, column=0, padx=10, pady=5, sticky="w"
+    )
+
+    # ── Чекбокс режима отладки (п.4) ──
+    # ВАЖНО: ячейка row=2, column=1 (row=1 занята ползунком conf_wrap!)
+    def _on_debug_toggle():
+        enabled = debug_var.get()
+        _save_debug_state(enabled)
+        _setup_debug_logger()
+        if enabled:
+            _debug("Режим отладки включён")
+            log_msg("🐛 Режим отладки включён — лог в output_log/mv_*.log")
+        else:
+            log_msg("🐛 Режим отладки выключен")
+
+    ctk.CTkCheckBox(ctrl, text="🐛 Режим отладки", variable=debug_var,
+                    command=_on_debug_toggle,
+                    text_color=_C_TEXT).grid(
+        row=2, column=1, padx=10, pady=5, sticky="w"
     )
 
     # Чекбокс слоя 4 (облачная обработка данных)
@@ -414,6 +412,8 @@ def launch():
     log_msg(f"📋 Классов в словаре: {len(MILITARY_CLASSES)}")
     log_msg(f"🤖 Модель: {detector.model_name}")
     log_msg(f"🖥️ Провайдеры: {', '.join(detector.providers)}")
+    _debug(f"Словарь: {len(MILITARY_CLASSES)} классов; модель={detector.model_name}; "
+           f"провайдеры={detector.providers}")
 
     # Проверка прокси-политики (п.Б4): без NVIDIA_PROXY облако не вызывается
     _nvidia_proxy = os.getenv("NVIDIA_PROXY", "")
@@ -520,12 +520,15 @@ def launch():
             progress.set(0)
             progress_label.configure(text="0%")
             log_msg(f"▶️ Запуск анализа: {os.path.basename(path)}")
+            _debug(f"analyze_video start: {path}, drone={drone_var.get()}, "
+                   f"conf={conf_slider.get():.2f}")
             results = detector.analyze_video(
                 path,
                 drone_mode=drone_var.get(),
                 confidence=conf_slider.get(),
                 progress_callback=on_progress,
             )
+            _debug(f"analyze_video done: {len(results)} moments")
             app.after(0, lambda: progress.set(1.0))
             app.after(0, lambda: log_msg(f"✅ Найдено моментов: {len(results)}"))
             if detector.last_report_path:
@@ -567,6 +570,8 @@ def launch():
                 last_html_path["value"] = html_path
                 app.after(0, lambda p=html_path: log_msg(f"📄 HTML-отчёт: {p}"))
             except Exception as e:
+                _write_last_error(e, "HTML-отчёт (одиночный анализ)")
+                _debug(f"HTML generate failed: {e}")
                 app.after(0, lambda err=e: log_msg(f"⚠️ HTML-отчёт не создан: {err}"))
 
             # Вместо галереи (п.А1) — открываем HTML-отчёт в браузере (БАГ 4: убрано ложное "Ничего не найдено")
@@ -579,6 +584,8 @@ def launch():
                 0, lambda: messagebox.showinfo("Готово", f"Найдено моментов: {len(results)}")
             )
         except Exception as e:
+            _write_last_error(e, "Одиночный анализ (детектор)")
+            _debug(f"run_analysis failed: {e}")
             app.after(0, lambda: log_msg(f"❌ Ошибка: {e}"))
             app.after(0, lambda: messagebox.showerror("Ошибка", str(e)))
         finally:
@@ -610,6 +617,7 @@ def launch():
                 if f.lower().endswith(exts)
             ])
         except Exception as e:
+            _write_last_error(e, "Пакет: чтение папки")
             app.after(0, lambda err=e: log_msg(f"❌ Ошибка чтения папки: {err}"))
             return
 
@@ -619,6 +627,7 @@ def launch():
 
         n = len(videos)
         app.after(0, lambda: log_msg(f"📁 Пакет: найдено {n} видео в {folder}"))
+        _debug(f"batch start: {folder}, {n} videos")
 
         # Сводка по пакету
         batch_summary = []
@@ -677,6 +686,7 @@ def launch():
                         progress_callback=batch_progress,
                     )
                 except Exception as e:
+                    _write_last_error(e, f"Пакет: анализ {vname}")
                     app.after(0, lambda err=e, nm=vname: log_msg(
                         f"❌ Ошибка в {nm}: {err}"))
                     results = []
@@ -731,6 +741,7 @@ def launch():
                     app.after(0, lambda p=html_path, nm=vname: log_msg(
                         f"  📄 HTML-отчёт ({nm}): {p}"))
                 except Exception as e:
+                    _write_last_error(e, f"Пакет: HTML для {vname}")
                     app.after(0, lambda err=e, nm=vname: log_msg(
                         f"  ⚠️ HTML для {nm} не создан: {err}"))
 
@@ -749,6 +760,7 @@ def launch():
                 app.after(0, lambda p=summary_path: log_msg(
                     f"📋 Сводка пакета: {p}"))
             except Exception as e:
+                _write_last_error(e, "Пакет: сводка batch_summary")
                 app.after(0, lambda err=e: log_msg(f"⚠️ Сводка не сохранена: {err}"))
 
             # Общий HTML-отчёт по всей папке
@@ -763,6 +775,7 @@ def launch():
                 _generate_batch_html(folder, all_batch_moments, detector, n,
                                      total_moments)
             except Exception as e:
+                _write_last_error(e, "Пакет: общий HTML-отчёт")
                 app.after(0, lambda err=e: log_msg(
                     f"⚠️ Общий HTML-отчёт не создан: {err}"))
 
@@ -958,6 +971,7 @@ def launch():
             with open(report_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
+            _write_last_error(e, "Открытие отчёта: чтение JSON")
             messagebox.showerror("Ошибка", f"Не удалось прочитать отчёт:\n{e}")
             return
 
@@ -1003,6 +1017,7 @@ def launch():
             open_in_browser(html_path)
             log_msg(f"📄 HTML-отчёт: {html_path}")
         except Exception as e:
+            _write_last_error(e, "Открытие отчёта: генерация HTML")
             log_msg(f"⚠️ Не удалось создать HTML: {e}")
             messagebox.showwarning("HTML", f"Не удалось создать HTML:\n{e}\n\nОтчёт загружен, путь: {report_file}")
 
@@ -1022,6 +1037,7 @@ def launch():
                 open_in_browser(html_path)
                 log_msg(f"📄 Открыт HTML: {html_path}")
             except Exception as e:
+                _write_last_error(e, "Открытие HTML")
                 messagebox.showerror("Ошибка", f"Не удалось открыть HTML:\n{e}")
             return
 
@@ -1050,6 +1066,7 @@ def launch():
                 open_in_browser(html_path)
                 log_msg(f"📄 HTML-отчёт (из JSON): {html_path}")
             except Exception as e:
+                _write_last_error(e, "Открытие HTML: генерация из JSON")
                 messagebox.showerror("Ошибка", f"Не удалось создать HTML из отчёта:\n{e}")
             return
 

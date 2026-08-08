@@ -1,0 +1,25 @@
+=== 2026-08-08T16:59:55.432943 ===
+Контекст: Одиночный анализ (детектор)
+Traceback (most recent call last):
+  File "D:\LLM\MuraveiVision\ui\app.py", line 571, in run_analysis
+    app.after(0, lambda p=html_path: log_msg(f"📄 HTML-отчёт: {p}"))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\tkinter\__init__.py", line 896, in after
+    name = self._register(callit)
+  File "C:\Python314\Lib\tkinter\__init__.py", line 1733, in _register
+    self.tk.createcommand(name, f)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+RuntimeError: main thread is not in main loop
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\LLM\MuraveiVision\ui\app.py", line 575, in run_analysis
+    app.after(0, lambda err=e: log_msg(f"⚠️ HTML-отчёт не создан: {err}"))
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\tkinter\__init__.py", line 896, in after
+    name = self._register(callit)
+  File "C:\Python314\Lib\tkinter\__init__.py", line 1733, in _register
+    self.tk.createcommand(name, f)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+RuntimeError: main thread is not in main loop

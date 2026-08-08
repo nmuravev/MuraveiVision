@@ -1,0 +1,5 @@
+2026-08-08 16:14:10,146 [INFO] Режим отладки включён. Лог: D:\LLM\MuraveiVision\output_log\mv_20260808_161410.log
+2026-08-08 16:14:10,147 [DEBUG] Режим отладки включён
+2026-08-08 16:14:36,393 [DEBUG] analyze_video start: D:/Radistka/IMG_1080.MP4, drone=False, conf=0.40
+2026-08-08 16:15:21,025 [DEBUG] analyze_video done: 125 moments
+2026-08-08 16:15:23,629 [DEBUG] HTML generate failed: cannot use 'dict' as a set element (unhashable type: 'dict')

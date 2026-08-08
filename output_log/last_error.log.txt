@@ -1,0 +1,9 @@
+=== 2026-08-08T16:15:51.819081 ===
+Контекст: Открытие HTML: генерация из JSON
+Traceback (most recent call last):
+  File "D:\LLM\MuraveiVision\ui\app.py", line 1064, in open_html_click
+    html_path = generate_html(html_video_path, moments, report_data=report_data)
+  File "D:\LLM\MuraveiVision\core\report_html.py", line 551, in generate_html
+    var _verdicts = {json.dumps({{str(k): v[:200] for k, v in cloud_annotations.items()}}, ensure_ascii=False)};
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: cannot use 'dict' as a set element (unhashable type: 'dict')

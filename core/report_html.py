@@ -220,7 +220,7 @@ def generate_html(video_path, moments, report_data=None, settings=None,
         cat = _categorize(cls_en)
         categories.setdefault(cat, []).append((cls_ru, cnt))
 
-    # ── CSS ──
+    # ── CSS ─
     css = f"""
     <style>
     * {{ box-sizing: border-box; }}
@@ -542,13 +542,20 @@ def generate_html(video_path, moments, report_data=None, settings=None,
     }, ensure_ascii=False, indent=2)
     json_b64 = base64.b64encode(report_json.encode("utf-8")).decode("utf-8")
 
+    # ВАЖНО: вердикты считаем ДО f-строки. Внутри f-строки {{...}} парсится
+    # как "множество из dict" (set of dict) и даёт TypeError unhashable.
+    _verdicts_js = json.dumps(
+        {str(k): str(v)[:200] for k, v in cloud_annotations.items()},
+        ensure_ascii=False,
+    )
+
     # ── JS ──
     js = f"""
     <script>
     var _moments = {json.dumps(moments_js_data, ensure_ascii=False)};
     var _thumbs = {json.dumps(thumbs_data, ensure_ascii=False)};
     var _json_b64 = "{json_b64}";
-    var _verdicts = {json.dumps({{str(k): v[:200] for k, v in cloud_annotations.items()}}, ensure_ascii=False)};
+    var _verdicts = {_verdicts_js};
 
     // Состояние фильтров
     var _activeClasses = new Set(); // классы в боковом меню
